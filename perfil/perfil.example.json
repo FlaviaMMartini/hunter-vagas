@@ -1,0 +1,54 @@
+{
+  "nome": "Seu Nome Completo",
+  "email": "seu.email@gmail.com",
+  "telefone": "11999999999",
+  "linkedin": "https://www.linkedin.com/in/seu-perfil/",
+  "github": "https://github.com/seu-usuario",
+  "cidade": "São Paulo, SP",
+  "genero": "feminino",
+  "cv": "perfil/meu-curriculo.pdf",
+  "pretensao": { "pj": "R$ 12.000", "clt": "R$ 10.000" },
+
+  "busca": {
+    "rotulo": "React",
+    "stack": ["react", "react.js", "reactjs"],
+    "ignorar": ["react native"],
+    "diferenciais": ["typescript", "next.js"],
+    "termos": ["react", "frontend", "front-end", "fullstack", "full stack", "typescript", "desenvolvedor", "software engineer", "javascript", "next.js"],
+    "remoto": true,
+    "hibridoEm": ["são paulo"],
+    "niveisExcluidos": ["júnior", "junior", "jr", "estágio", "estagiário", "estagiária", "trainee", "intern", "internship", "aprendiz"],
+    "idadeMaximaDias": 45
+  },
+
+  "carta": {
+    "apresentacao": "sou Desenvolvedora Front-end Sênior com 8 anos de experiência em aplicações web, com foco em React e TypeScript.",
+    "especialidade": "React e TypeScript são minha principal especialidade, com 8 anos de experiência em desenvolvimento web.",
+    "cargoPadrao": "Desenvolvedora Front-end Sênior (React + TypeScript)",
+    "fechamento": "Envio meu currículo em anexo e fico à disposição para uma conversa.",
+    "despedida": "Obrigada!"
+  },
+
+  "skills": [
+    "React", "TypeScript", "JavaScript", "Next.js", "Redux", "Node.js", "REST", "GraphQL",
+    "Jest", "Testing Library", "Storybook", "Design System", "CI/CD", "AWS", "Docker"
+  ],
+
+  "destaques": [
+    {
+      "sempre": true,
+      "texto": "Na Empresa Atual, desenvolvo aplicações web em React e TypeScript usadas por milhares de pessoas, cuidando de performance e qualidade de código."
+    },
+    {
+      "quando": ["design system", "storybook", "componentes reutiliz"],
+      "texto": "Criei e mantive um Design System com Storybook, padronizando componentes entre times."
+    },
+    {
+      "quando": ["full stack", "node", "back end", "api"],
+      "texto": "Também atuo com APIs em Node.js e camadas de BFF, o que me dá visão de ponta a ponta."
+    },
+    {
+      "texto": "Na Empresa Anterior, liderei a migração de uma aplicação legada para React, reduzindo o tempo de carregamento pela metade."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+# Segredos (senha de app do Gmail, chaves)
+.env
+# Seus dados: vagas, e-mails enviados, respostas, capturas, logs
+data/
+# Seu perfil e currículo — só o modelo vai para o Git
+perfil/*
+!perfil/perfil.example.json
+*.log

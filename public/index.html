@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hunter — Painel</title>
+<style>
+  :root {
+    --bg: #f6f5fb; --panel: #ffffff; --ink: #1d1b26; --muted: #6b6878; --line: #e6e3ef;
+    --brand: #6d28d9; --brand-soft: #ede7fb; --ok: #15803d; --ok-soft: #dcfce7; --warn: #b45309; --warn-soft: #fef3c7;
+    --err: #b91c1c; --err-soft: #fee2e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #13121a; --panel: #1c1a26; --ink: #ecebf3; --muted: #9a97a8; --line: #2e2b3b;
+      --brand: #a78bfa; --brand-soft: #2a2140; --ok: #4ade80; --ok-soft: #14301f; --warn: #fbbf24; --warn-soft: #33270e;
+      --err: #f87171; --err-soft: #3a1717;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 19px; margin: 0; }
+  header h1 span { color: var(--brand); }
+  header .spacer { flex: 1; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi b { display: block; font-size: 28px; font-variant-numeric: tabular-nums; }
+  .kpi small { color: var(--muted); }
+  nav { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  nav button { background: none; border: 1px solid var(--line); color: var(--ink); padding: 8px 14px; border-radius: 999px; cursor: pointer; font: inherit; }
+  nav button.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  a { color: var(--brand); }
+  .btn { background: var(--brand); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  .btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.err { background: var(--err-soft); color: var(--err); }
+  .pill.brand { background: var(--brand-soft); color: var(--brand); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { font-size: 13px; color: var(--muted); display: block; margin: 10px 0 4px; }
+  input, textarea { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  textarea { min-height: 220px; resize: vertical; }
+  .muted { color: var(--muted); }
+  .bookmarklet { display: inline-block; background: var(--brand); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 700; text-decoration: none; cursor: grab; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 10px; display: none; max-width: 90vw; }
+  details summary { cursor: pointer; color: var(--brand); }
+  ol li { margin-bottom: 6px; }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center; color: var(--muted); }
+  .drop.over { border-color: var(--brand); background: var(--brand-soft); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 <span>Hunter</span><span id="userName" style="color:var(--ink)"></span></h1>
+  <div class="spacer"></div>
+  <span id="batchInfo" class="muted"></span>
+  <button class="btn ghost" id="huntBtn">Buscar vagas agora</button>
+</header>
+<main>
+  <div class="kpis" id="kpis"></div>
+  <nav id="tabs">
+    <button data-tab="responses">📬 Respostas <span id="respBadge"></span></button>
+    <button data-tab="sent" class="active">📤 Enviados</button>
+    <button data-tab="queue">📧 Fila de e-mail</button>
+    <button data-tab="platform">🖱️ Vagas na plataforma</button>
+    <button data-tab="discarded">🗑️ Descartadas</button>
+    <button data-tab="capture">📸 Capturar vagas</button>
+  </nav>
+  <section id="view"></section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+let S = null;
+let tab = 'sent';
+let bookmarkletHref = '#';
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (iso) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+const STATUS = {
+  enviada: '<span class="pill ok">Enviado</span>',
+  respondida: '<span class="pill brand">Respondeu 🎉</span>',
+  devolvida: '<span class="pill err" title="O e-mail não existe ou recusou a mensagem">Devolvido</span>',
+};
+const isToday =(iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
+
+function toast(msg, ms = 3500) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), ms);
+}
+
+async function api(path, data) {
+  const res = await fetch(path, data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+async function load() {
+  try {
+    S = await api('/api/state');
+  } catch (e) {
+    // Mostra o erro em vez de deixar a página em branco.
+    $('#view').innerHTML = `<div class="card"><span class="pill err">Erro</span> O painel não conseguiu carregar: ${esc(e.message)}. Me mande um print desta mensagem.</div>`;
+    return;
+  }
+  render();
+}
+
+function render() {
+  const sentToday = S.sent.filter((j) => isToday(j.sentAt)).length;
+  $('#kpis').innerHTML = [
+    [S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length, 'respostas importantes novas'],
+    [sentToday, 'e-mails enviados hoje'],
+    [S.sent.length, 'e-mails enviados no total'],
+    [S.queue.length, 'na fila de e-mail'],
+    [S.platform.length, 'vagas para aplicar na plataforma'],
+    [S.applied, 'candidaturas manuais marcadas'],
+  ].map(([n, l]) => `<div class="kpi"><b>${n}</b><small>${l}</small></div>`).join('');
+
+  const b = S.batch;
+  $('#batchInfo').textContent = b.running
+    ? `Enviando ${b.done}/${b.total}${b.nextAt ? ` · próximo às ${new Date(b.nextAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`
+    : [S.lastRun && `Última busca: ${fmt(S.lastRun.at)}`, S.lastSync && `Gmail conferido: ${fmt(S.lastSync)}`].filter(Boolean).join(' · ');
+  $('#huntBtn').disabled = S.hunting;
+  $('#huntBtn').textContent = S.hunting ? 'Buscando…' : 'Buscar vagas agora';
+
+  document.querySelectorAll('#tabs button').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
+  const newImportant = S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length;
+  $('#respBadge').innerHTML = newImportant ? `<span class="pill err">${newImportant}</span>` : '';
+  document.title = newImportant ? `(${newImportant}) Hunter — Painel` : 'Hunter — Painel';
+  $('#view').innerHTML = { responses: viewResponses, sent: viewSent, queue: viewQueue, platform: viewPlatform, discarded: viewDiscarded, capture: viewCapture }[tab]();
+  $('#userName').textContent = S.nome ? ` · ${S.nome.split(' ')[0]}` : '';
+  if ($('#bm')) $('#bm').href = bookmarkletHref;
+}
+
+function viewSent() {
+  if (!S.sent.length) return `<div class="card muted">Nenhum e-mail enviado ainda. Veja a aba <b>Fila de e-mail</b>.</div>`;
+  return `<div class="card table-wrap"><table>
+    <thead><tr><th>Data e hora</th><th>Vaga</th><th>Empresa</th><th>Para</th><th>Status</th><th></th></tr></thead>
+    <tbody>${S.sent.map((j, i) => `<tr>
+      <td class="nowrap">${fmt(j.sentAt)}</td>
+      <td>${esc(j.title)}<br><small class="muted">${esc(j.subject)}</small></td>
+      <td>${esc(j.company ?? '—')}</td>
+      <td>${esc(j.sentTo)}</td>
+      <td>${STATUS[j.status] ?? j.status}${j.statusAt && j.status !== 'enviada' ? `<br><small class="muted">${fmt(j.statusAt)}</small>` : ''}</td>
+      <td><details><summary>ver</summary><pre style="white-space:pre-wrap;max-width:420px">${esc(j.message)}</pre>
+        ${j.url?.startsWith('http') ? `<a href="${esc(j.url)}" target="_blank">vaga</a>` : ''} ${j.postUrl ? `<a href="${esc(j.postUrl)}" target="_blank">post</a>` : ''}</details></td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function viewQueue() {
+  if (!S.hasPassword) return `<div class="card"><span class="pill err">Sem senha</span> Falta GMAIL_APP_PASSWORD no .env.</div>`;
+  if (!S.queue.length) return `<div class="card muted">Fila vazia. Traga vagas com e-mail pela aba <b>📸 Capturar vagas</b> (print ou texto) — a busca automática também coloca aqui as que têm e-mail.</div>`;
+  return `<div class="card row"><b>${S.queue.length} candidaturas prontas.</b>
+      <span class="muted">Enviar todas usa intervalo de 1,5–3 min entre e-mails (protege seu Gmail de cair em spam).</span>
+      <div style="flex:1"></div><button class="btn" onclick="sendAll()" ${S.batch.running ? 'disabled' : ''}>Enviar todas</button></div>` +
+    S.queue.map((j, i) => `<div class="card" id="q${i}">
+      <div class="row"><b>${esc(j.title)}</b> <span class="pill brand">${esc(j.source)}</span>
+        ${j.modality && j.modality !== 'remoto' ? `<span class="pill warn">${esc(j.modality)}</span>` : ''}
+        ${j.lastError ? `<span class="pill err" title="${esc(j.lastError)}">falhou</span>` : ''}
+        <div style="flex:1"></div>
+        ${j.url?.startsWith('http') ? `<a href="${esc(j.url)}" target="_blank">abrir vaga</a>` : ''}
+        ${j.postUrl ? `<a href="${esc(j.postUrl)}" target="_blank">abrir post</a>` : ''}</div>
+      <small class="muted">Skills em comum: ${esc(j.matched.join(', ') || '—')}</small>
+      <label>Para</label><input data-f="to" value="${esc(j.to)}">
+      <label>Assunto</label><input data-f="subject" value="${esc(j.subject)}">
+      <label>Mensagem (pode editar)</label><textarea data-f="body">${esc(j.body)}</textarea>
+      <div class="row" style="margin-top:10px"><button class="btn" onclick="sendOne(${i}, this)">Enviar agora</button>
+        <button class="btn ghost" onclick="setStatus('${j.id}', 'descartada')">Descartar</button></div>
+    </div>`).join('');
+}
+
+function viewPlatform() {
+  if (!S.platform.length) return `<div class="card muted">Nenhuma vaga pendente.</div>`;
+  return `<div class="card table-wrap"><table>
+    <thead><tr><th>Vaga</th><th>Empresa</th><th>Nível</th><th>Extras</th><th>Fonte</th><th>Achada em</th><th></th></tr></thead>
+    <tbody>${S.platform.map((j) => `<tr>
+      <td><a href="${esc(j.url)}" target="_blank">${esc(j.title)}</a>
+        ${j.modality && j.modality !== 'remoto' ? `<span class="pill warn">${esc(j.modality)}</span>` : ''}
+        ${j.stackUnknown ? '<span class="pill warn" title="O post não cita React; confira no link">stack não citada</span>' : ''}
+        ${j.postUrl ? `<br><small><a href="${esc(j.postUrl)}" target="_blank">ver origem</a></small>` : ''}</td>
+      <td>${esc(j.company ?? '—')}</td><td>${esc(j.level)}</td><td>${esc((j.extras ?? []).join(', '))}</td>
+      <td><span class="pill brand">${esc(j.source)}</span></td><td class="nowrap">${fmt(j.firstSeenAt)}</td>
+      <td class="nowrap"><button class="btn" onclick="setStatus('${j.id}', 'candidatada')">Já me candidatei</button>
+        <button class="btn ghost" onclick="setStatus('${j.id}', 'descartada')">✕</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+const IMPORTANT = ['entrevista', 'acao'];
+const RESP = {
+  entrevista: ['ok', '🟢 Entrevista / próxima etapa'],
+  acao: ['warn', '🟡 Ação sua pendente'],
+  negativa: ['err', '🔴 Não seguiu'],
+  recebida: ['brand', '⚪ Candidatura recebida'],
+  outro: ['brand', 'Outro'],
+};
+const RESP_FILTERS = [['importantes', 'Importantes'], ['negativa', 'Não seguiu'], ['recebida', 'Confirmações'], ['outro', 'Outros'], ['todas', 'Todas']];
+let respFilter = 'importantes';
+
+function viewResponses() {
+  const list = S.responses.filter((r) => respFilter === 'todas' || (respFilter === 'importantes' ? IMPORTANT.includes(r.category) : r.category === respFilter));
+  const count = (f) => S.responses.filter((r) => f === 'todas' || (f === 'importantes' ? IMPORTANT.includes(r.category) : r.category === f)).length;
+  return `<div class="card row">
+      ${RESP_FILTERS.map(([f, label]) => `<button class="btn ${respFilter === f ? '' : 'ghost'}" onclick="respFilter='${f}';render()">${label} (${count(f)})</button>`).join('')}
+      <div style="flex:1"></div>
+      ${TRASHABLE[respFilter] && list.length ? `<button class="btn" style="background:var(--err)" onclick="trashAll(this)">🗑️ Mover as ${list.length} para a lixeira</button>` : ''}
+      <small class="muted">Gmail lido em ${fmt(S.responsesCheckedAt)}</small>
+      <button class="btn ghost" onclick="checkResponsesNow(this)">Verificar agora</button>
+    </div>` +
+    (list.length ? '' : '<div class="card muted">Nada aqui por enquanto.</div>') +
+    list.slice(0, 150).map((r) => `<div class="card" style="${r.seen ? 'opacity:.7' : ''}">
+      <div class="row"><span class="pill ${RESP[r.category]?.[0] ?? 'brand'}">${RESP[r.category]?.[1] ?? r.category}</span>
+        ${r.seen ? '' : '<span class="pill err">nova</span>'}
+        <b>${esc(r.subject)}</b></div>
+      <small class="muted">${esc(r.fromName)} · ${fmt(r.date)}${r.jobTitle ? ` · vaga: <b>${esc(r.jobTitle)}</b>${r.jobCompany ? ` (${esc(r.jobCompany)})` : ''}` : ''}</small>
+      <p style="margin:8px 0">${esc(r.snippet.slice(0, 260))}${r.snippet.length > 260 ? '…' : ''}</p>
+      <div class="row"><a class="btn" href="${esc(r.link)}" target="_blank" onclick="markSeen(['${r.uid}'])">Abrir no Gmail</a>
+        ${r.seen ? '' : `<button class="btn ghost" onclick="markSeen(['${r.uid}'])">Marcar como vista</button>`}
+        <div style="flex:1"></div>
+        <button class="btn ghost" title="Mover este e-mail para a lixeira do Gmail" onclick="trashOne('${r.uid}', this)">🗑️</button></div>
+    </div>`).join('');
+}
+async function markSeen(uids) { await api('/api/responses/seen', { uids }); load(); }
+async function trash(uids, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/api/responses/trash', { uids });
+    toast(`🗑️ ${r.moved} e-mail(s) na lixeira do Gmail (dá para recuperar por 30 dias)`, 6000);
+  } catch (e) { toast(`✖ ${e.message}`, 8000); btn.disabled = false; }
+  load();
+}
+function trashOne(uid, btn) { trash([uid], btn); }
+// Filtros com botão "apagar tudo" (entrevistas e ações pendentes nunca).
+const TRASHABLE = { negativa: 'não seguiu', recebida: 'confirmações' };
+function trashAll(btn) {
+  const uids = S.responses.filter((r) => r.category === respFilter).map((r) => r.uid);
+  if (!confirm(`Mover ${uids.length} e-mails de "${TRASHABLE[respFilter]}" para a lixeira do Gmail?\n\nEles ficam na lixeira por 30 dias, então dá para recuperar se algum estiver errado.`)) return;
+  btn.textContent = 'Movendo…';
+  trash(uids, btn);
+}
+async function checkResponsesNow(btn) {
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  try { const r = await api('/api/responses/check', {}); toast(r.novas ? `${r.novas} respostas novas` : 'Nenhuma resposta nova'); }
+  catch (e) { toast(`✖ ${e.message}`, 6000); }
+  load();
+}
+
+function viewDiscarded() {
+  if (!S.discarded.length) return `<div class="card muted">Nenhum post com e-mail ou link foi descartado.</div>`;
+  return `<div class="card muted">Posts com e-mail ou link que o filtro barrou. Discorda? Clique em <b>Incluir mesmo assim</b>.</div>` +
+    S.discarded.map((d) => `<div class="card">
+      <div class="row"><b>${esc(d.title ?? 'Post sem cargo identificado')}</b>
+        <span class="pill warn">${esc(d.reason)}</span>
+        ${d.emails.length ? `<span class="pill ok">${esc(d.emails.join(', '))}</span>` : ''}
+        <div style="flex:1"></div>
+        ${d.link ? `<a href="${esc(d.link)}" target="_blank">abrir link</a>` : ''}</div>
+      <small class="muted">${esc(d.author ?? '')} · capturado em ${fmt(d.at)}</small>
+      <details style="margin-top:6px"><summary>ver texto do post</summary><pre style="white-space:pre-wrap">${esc(d.text)}</pre></details>
+      <div class="row" style="margin-top:10px"><button class="btn" onclick="force('${d.id}')">Incluir mesmo assim</button>
+        <button class="btn ghost" onclick="removeDiscarded('${d.id}')">Remover</button></div>
+    </div>`).join('');
+}
+
+// Captura manual: você traz a vaga (print ou texto) e o Hunter entende, escreve o e-mail e põe na fila.
+function viewCapture() {
+  return `<div class="card">
+    <h3 style="margin-top:0">📸 Capturar vagas por print ou texto</h3>
+    <p class="muted">Viu uma vaga em qualquer lugar (feed, grupo, site)? Tire um print (<b>Win+Shift+S</b>) e cole aqui com <b>Ctrl+V</b>,
+      arraste a imagem, ou cole o texto. O Hunter lê a vaga, acha o e-mail ou o link de candidatura e prepara tudo.</p>
+    <div id="drop" class="drop" ondragover="event.preventDefault(); this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="onDrop(event)">
+      📋 <b>Ctrl+V</b> para colar o print · arraste a imagem aqui ·
+      <label style="display:inline;color:var(--brand);cursor:pointer">escolher arquivo<input type="file" accept="image/*" multiple hidden onchange="ocrFiles(this.files)"></label>
+    </div>
+    <div id="ocrStatus" class="muted" style="margin:8px 0"></div>
+    <label>Texto da vaga (revise antes de analisar: a leitura do print pode errar uma letra do e-mail)</label>
+    <textarea id="pasteArea" placeholder="Cole aqui o texto da vaga — ou cole um print acima que o texto aparece aqui.">${esc(draft)}</textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" onclick="importText()">Analisar e preparar candidatura</button>
+      <button class="btn ghost" onclick="draft=''; $('#pasteArea').value=''">Limpar</button>
+      <small class="muted">Várias vagas de uma vez? Separe cada uma com uma linha <b>---</b></small>
+    </div>
+  </div>`;
+}
+
+// ---- Leitura de prints (OCR no navegador, com Tesseract.js — gratuito, sem IA paga) ----
+let draft = '';
+let tesseract = null;
+const loadTesseract = () => tesseract ??= new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  s.onload = () => resolve(window.Tesseract);
+  s.onerror = () => { tesseract = null; reject(new Error('Não consegui carregar o leitor de imagens (sem internet?)')); };
+  document.head.append(s);
+});
+async function ocrFiles(files) {
+  const images = [...files].filter((f) => f.type.startsWith('image/'));
+  if (!images.length) return;
+  const status = (m) => { const el = $('#ocrStatus'); if (el) el.textContent = m; };
+  try {
+    const T = await loadTesseract();
+    for (const [i, img] of images.entries()) {
+      const { data } = await T.recognize(img, 'por+eng', {
+        logger: (m) => m.status === 'recognizing text' && status(`🔎 Lendo print ${i + 1}/${images.length}… ${Math.round(m.progress * 100)}%`),
+      });
+      draft = [$('#pasteArea').value.trim(), data.text.trim()].filter(Boolean).join('\n\n---\n\n');
+      $('#pasteArea').value = draft;
+    }
+    status(`✔ ${images.length} print(s) lido(s). Revise o texto e clique em "Analisar".`);
+  } catch (e) { status(`✖ ${e.message}`); }
+}
+function onDrop(e) { e.preventDefault(); $('#drop').classList.remove('over'); ocrFiles(e.dataTransfer.files); }
+// Ctrl+V com imagem na aba de captura → OCR. Texto colado segue o caminho normal.
+document.addEventListener('paste', (e) => {
+  if (tab !== 'capture') return;
+  const files = [...(e.clipboardData?.files ?? [])];
+  if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); ocrFiles(files); }
+});
+document.addEventListener('input', (e) => { if (e.target.id === 'pasteArea') draft = e.target.value; });
+
+function readCard(i) {
+  const card = $(`#q${i}`);
+  const get = (f) => card.querySelector(`[data-f="${f}"]`).value;
+  return { id: S.queue[i].id, to: get('to'), subject: get('subject'), body: get('body') };
+}
+
+async function sendOne(i, btn) {
+  const item = readCard(i);
+  const isTest = item.to.trim().toLowerCase() === S.email.toLowerCase();
+  if (!isTest && item.to.trim() !== S.queue[i].origTo
+    && !confirm(`Atenção: o e-mail da vaga é ${S.queue[i].origTo}, mas você vai enviar para ${item.to}. Continuar?`)) return;
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const r = await api('/api/send', item);
+    toast(r.test ? '✔ Teste enviado para você (a vaga continua na fila).' : `✔ Enviado para ${item.to}`, 5000);
+  }
+  catch (e) { toast(`✖ ${e.message}`, 6000); }
+  load();
+}
+
+async function sendAll() {
+  if (!confirm(`Enviar ${S.queue.length} candidaturas? Leva alguns minutos (intervalo entre e-mails).`)) return;
+  await api('/api/send-all', { items: S.queue.map((_, i) => readCard(i)) });
+  toast('Envio iniciado. Acompanhe no topo da página.');
+  tab = 'sent'; load();
+}
+
+async function setStatus(id, status) { await api('/api/status', { id, status }); load(); }
+
+function showImport(r) {
+  const rej = Object.entries(r.rejeitadas).map(([k, v]) => `${k}: ${v}`).join(', ');
+  toast(`${r.total ?? r.lidos} posts lidos · ${r.email} vagas com e-mail · ${r.plataforma} com link · ${r.repetidas} repetidas${rej ? ` · descartados: ${rej}` : ''}`
+    + (r.descartadasComContato ? ` — ${r.descartadasComContato} com e-mail/link estão na aba Descartadas` : ''), 12000);
+  tab = r.email ? 'queue' : r.plataforma ? 'platform' : r.descartadasComContato ? 'discarded' : tab;
+  load();
+}
+async function importText(text = $('#pasteArea').value) {
+  if (!text.trim()) return toast('Cole um print ou o texto da vaga primeiro.');
+  try {
+    showImport(await api('/api/import', { text }));
+    draft = '';
+  } catch (e) { toast(`✖ ${e.message}`, 8000); }
+}
+async function force(id) {
+  const r = await api('/api/force', { id });
+  toast(r.channel === 'email' ? '✔ Incluída na fila de e-mail' : '✔ Incluída em Vagas na plataforma');
+  load();
+}
+async function removeDiscarded(id) { await api('/api/discard-remove', { id }); load(); }
+
+$('#tabs').addEventListener('click', (e) => { if (e.target.dataset.tab) { tab = e.target.dataset.tab; render(); } });
+$('#huntBtn').addEventListener('click', async () => {
+  S.hunting = true; render();
+  await api('/api/hunt', {}); toast('✔ Busca concluída'); load();
+});
+
+function autoImport() {
+  // A notificação de "várias respostas" abre o painel direto na aba Respostas.
+  if (location.hash === '#respostas') {
+    history.replaceState(null, '', location.pathname);
+    tab = 'responses';
+    return render();
+  }
+}
+window.addEventListener('hashchange', autoImport);
+load().then(autoImport);
+// Atualiza sozinho (útil durante envio em lote) — menos nas abas onde você edita texto.
+setInterval(() => { if (!['queue', 'capture'].includes(tab) || S?.batch.running) load(); }, 10000);
+</script>
+</body>
+</html>
