@@ -609,7 +609,7 @@ function renderProgress() {
 
   const chips = list.map(([name, s]) => {
     const label = SOURCE_NAMES[name] ?? name;
-    if (s.status === 'done') return `<span class="pill ok">✓ ${label} · ${s.found}</span>`;
+    if (s.status === 'done') return `<span class="pill ok" title="vagas lidas nesta fonte (o filtro decide quais entram)">✓ ${label} · ${s.found} lidas</span>`;
     if (s.status === 'error') return `<span class="pill err" title="${esc(s.error)}">✖ ${label}</span>`;
     if (s.status === 'running') return `<span class="pill warn">⏳ ${label}${s.total ? ` · ${esc(s.label)} (${s.done} de ${s.total})` : '…'}</span>`;
     return `<span class="pill brand" style="opacity:.6">${label}</span>`;
