@@ -339,21 +339,62 @@ const loadTesseract = () => tesseract ??= new Promise((resolve, reject) => {
   s.onerror = () => { tesseract = null; reject(new Error('Não consegui carregar o leitor de imagens (sem internet?)')); };
   document.head.append(s);
 });
+// Print de tela tem letra pequena: ampliar (até ~3x) e passar para cinza faz o OCR errar bem menos
+// (ex.: "amanda.silva@emive.com.br" saía "amanda silva&emive.com.br" sem ampliar).
+async function prepareImage(file) {
+  const bmp = await createImageBitmap(file);
+  const factor = Math.max(1, Math.min(3, 3600 / bmp.width));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * factor);
+  canvas.height = Math.round(bmp.height * factor);
+  const g = canvas.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
+  g.filter = 'grayscale(1) contrast(1.2)';
+  g.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+// Rede de segurança para e-mails que o OCR ainda erra: "&", "©", "®" no lugar do @ e
+// espaço no lugar do ponto ("email: fulano silva&empresa.com.br"). Devolve o texto e o que mudou.
+const TLD = '(?:com|br|net|org|io|dev|tech|co|app|ai|me)';
+function repairEmails(text) {
+  const fixes = [];
+  const out = text.replace(
+    new RegExp(`(e-?mail[:\\s]*|para[:\\s]+|contato[:\\s]*)?\\b([A-Za-z0-9._%+-]+(?: [A-Za-z0-9._%+-]+)?)\\s?([&©®@])\\s?([A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.${TLD}\\b(?:\\.br)?)`, 'gi'),
+    (match, label = '', local, sign, domain) => {
+      const spaced = local.includes(' ') || /\s[&©®@]|[&©®@]\s/.test(match.slice(label.length));
+      // Só mexe quando dá para confiar: tem @, ou há um rótulo "email:"/"para" antes.
+      if (sign !== '@' && !label) return match;
+      if (sign === '@' && !spaced) return match;
+      const fixed = `${local.trim().replace(/\s+/g, '.')}@${domain}`;
+      fixes.push(fixed);
+      return `${label}${fixed}`;
+    },
+  );
+  return { text: out, fixes };
+}
+
 async function ocrFiles(files) {
   const images = [...files].filter((f) => f.type.startsWith('image/'));
   if (!images.length) return;
-  const status = (m) => { const el = $('#ocrStatus'); if (el) el.textContent = m; };
+  const status = (m) => { const el = $('#ocrStatus'); if (el) el.innerHTML = m; };
   try {
     const T = await loadTesseract();
+    const allFixes = [];
     for (const [i, img] of images.entries()) {
-      const { data } = await T.recognize(img, 'por+eng', {
+      status(`🔎 Preparando print ${i + 1}/${images.length}…`);
+      const { data } = await T.recognize(await prepareImage(img), 'por+eng', {
         logger: (m) => m.status === 'recognizing text' && status(`🔎 Lendo print ${i + 1}/${images.length}… ${Math.round(m.progress * 100)}%`),
       });
-      draft = [$('#pasteArea').value.trim(), data.text.trim()].filter(Boolean).join('\n\n---\n\n');
+      const { text, fixes } = repairEmails(data.text.trim());
+      allFixes.push(...fixes);
+      draft = [$('#pasteArea').value.trim(), text].filter(Boolean).join('\n\n---\n\n');
       $('#pasteArea').value = draft;
     }
-    status(`✔ ${images.length} print(s) lido(s). Revise o texto e clique em "Analisar".`);
-  } catch (e) { status(`✖ ${e.message}`); }
+    status(`✔ ${images.length} print(s) lido(s). Revise o texto e clique em "Analisar".`
+      + (allFixes.length ? `<br>⚠️ Corrigi e-mail(s) que a leitura pode ter errado: <b>${allFixes.map(esc).join(', ')}</b> — confira no print.` : ''));
+  } catch (e) { status(`✖ ${esc(e.message)}`); }
 }
 function onDrop(e) { e.preventDefault(); $('#drop').classList.remove('over'); ocrFiles(e.dataTransfer.files); }
 // Ctrl+V com imagem na aba de captura → OCR. Texto colado segue o caminho normal.
