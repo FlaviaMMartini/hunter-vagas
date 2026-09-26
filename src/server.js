@@ -100,6 +100,9 @@ async function state() {
       && (CAPTURED.includes(j.source) || Date.now() - new Date(j.lastSeenAt ?? j.firstSeenAt) < 2 * 864e5))
       .sort((a, b) => b.score - a.score || (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '')).map(pick),
     applied: jobs.filter((j) => j.status === 'candidatada').length,
+    appliedJobs: jobs.filter((j) => j.status === 'candidatada')
+      .sort((a, b) => byDesc(a.statusAt ?? a.firstSeenAt, b.statusAt ?? b.firstSeenAt))
+      .map((j) => ({ ...pick(j), statusAt: j.statusAt })),
     // Descartes com e-mail primeiro: são os que mais valem uma segunda olhada.
     discarded: Object.values(store.discarded ?? {})
       .sort((a, b) => Number(b.hasEmail) - Number(a.hasEmail) || byDesc(a.at, b.at))
@@ -162,7 +165,8 @@ const body = (req) => new Promise((resolve) => {
 
 async function setStatus(id, status) {
   const store = await loadStore();
-  if (store.jobs[id]) store.jobs[id].status = status;
+  // statusAt: quando você marcou ("Já me candidatei" em …).
+  if (store.jobs[id]) Object.assign(store.jobs[id], { status, statusAt: new Date().toISOString() });
   await saveStore(store);
 }
 

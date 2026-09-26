@@ -25,7 +25,10 @@
   header .spacer { flex: 1; }
   main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
-  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    text-align: left; font: inherit; color: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .kpi:hover, .kpi:focus-visible { border-color: var(--brand); box-shadow: 0 4px 14px rgba(109, 40, 217, .15); transform: translateY(-2px); outline: none; }
+  .kpi:hover b { color: var(--brand); }
   .kpi b { display: block; font-size: 28px; font-variant-numeric: tabular-nums; }
   .kpi small { color: var(--muted); }
   nav { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -135,14 +138,15 @@ async function load() {
 
 function render() {
   const sentToday = S.sent.filter((j) => isToday(j.sentAt)).length;
+  // Cada card leva à aba (e ao filtro) que explica o número.
   $('#kpis').innerHTML = [
-    [S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length, 'respostas importantes novas'],
-    [sentToday, 'e-mails enviados hoje'],
-    [S.sent.length, 'e-mails enviados no total'],
-    [S.queue.length, 'na fila de e-mail'],
-    [S.platform.length, 'vagas para aplicar na plataforma'],
-    [S.applied, 'candidaturas manuais marcadas'],
-  ].map(([n, l]) => `<div class="kpi"><b>${n}</b><small>${l}</small></div>`).join('');
+    [S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length, 'respostas importantes novas', "goTo('responses', { respFilter: 'importantes' })"],
+    [sentToday, 'e-mails enviados hoje', "goTo('sent')"],
+    [S.sent.length, 'e-mails enviados no total', "goTo('sent')"],
+    [S.queue.length, 'na fila de e-mail', "goTo('queue')"],
+    [S.platform.length, 'vagas para aplicar na plataforma', "goTo('platform', { platformFilter: 'pendentes' })"],
+    [S.applied, 'candidaturas manuais marcadas', "goTo('platform', { platformFilter: 'candidatadas' })"],
+  ].map(([n, l, go]) => `<button class="kpi" onclick="${go}" title="Ver ${l}"><b>${n}</b><small>${l}</small></button>`).join('');
 
   const b = S.batch;
   $('#batchInfo').textContent = b.running
@@ -196,19 +200,36 @@ function viewQueue() {
     </div>`).join('');
 }
 
+let platformFilter = 'pendentes';
+function goTo(target, filters = {}) {
+  if (filters.respFilter) respFilter = filters.respFilter;
+  if (filters.platformFilter) platformFilter = filters.platformFilter;
+  tab = target;
+  render();
+  $('#tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function viewPlatform() {
-  if (!S.platform.length) return `<div class="card muted">Nenhuma vaga pendente.</div>`;
-  return `<div class="card table-wrap"><table>
-    <thead><tr><th>Vaga</th><th>Empresa</th><th>Nível</th><th>Extras</th><th>Fonte</th><th>Achada em</th><th></th></tr></thead>
-    <tbody>${S.platform.map((j) => `<tr>
+  const applied = platformFilter === 'candidatadas';
+  const list = applied ? S.appliedJobs : S.platform;
+  const chips = `<div class="card row">
+      <button class="btn ${applied ? 'ghost' : ''}" onclick="platformFilter='pendentes'; render()">Para aplicar (${S.platform.length})</button>
+      <button class="btn ${applied ? '' : 'ghost'}" onclick="platformFilter='candidatadas'; render()">Já me candidatei (${S.appliedJobs.length})</button>
+    </div>`;
+  if (!list.length) return chips + `<div class="card muted">${applied ? 'Você ainda não marcou nenhuma vaga como candidatada.' : 'Nenhuma vaga pendente.'}</div>`;
+  return chips + `<div class="card table-wrap"><table>
+    <thead><tr><th>Vaga</th><th>Empresa</th><th>Nível</th><th>Extras</th><th>Fonte</th><th>${applied ? 'Candidatura em' : 'Achada em'}</th><th></th></tr></thead>
+    <tbody>${list.map((j) => `<tr>
       <td><a href="${esc(j.url)}" target="_blank">${esc(j.title)}</a>
         ${j.modality && j.modality !== 'remoto' ? `<span class="pill warn">${esc(j.modality)}</span>` : ''}
-        ${j.stackUnknown ? '<span class="pill warn" title="O post não cita React; confira no link">stack não citada</span>' : ''}
+        ${j.stackUnknown ? '<span class="pill warn" title="O post não cita a stack do seu perfil; confira no link">stack não citada</span>' : ''}
         ${j.postUrl ? `<br><small><a href="${esc(j.postUrl)}" target="_blank">ver origem</a></small>` : ''}</td>
       <td>${esc(j.company ?? '—')}</td><td>${esc(j.level)}</td><td>${esc((j.extras ?? []).join(', '))}</td>
-      <td><span class="pill brand">${esc(j.source)}</span></td><td class="nowrap">${fmt(j.firstSeenAt)}</td>
-      <td class="nowrap"><button class="btn" onclick="setStatus('${j.id}', 'candidatada')">Já me candidatei</button>
-        <button class="btn ghost" onclick="setStatus('${j.id}', 'descartada')">✕</button></td>
+      <td><span class="pill brand">${esc(j.source)}</span></td><td class="nowrap">${fmt(applied ? j.statusAt : j.firstSeenAt)}</td>
+      <td class="nowrap">${applied
+        ? `<button class="btn ghost" onclick="setStatus('${j.id}', 'nova')" title="Volta para a lista de vagas para aplicar">Desfazer</button>`
+        : `<button class="btn" onclick="setStatus('${j.id}', 'candidatada')">Já me candidatei</button>
+           <button class="btn ghost" onclick="setStatus('${j.id}', 'descartada')">✕</button>`}</td>
     </tr>`).join('')}</tbody></table></div>`;
 }
 
