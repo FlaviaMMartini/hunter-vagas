@@ -53,7 +53,7 @@ function splitTitle(raw) {
   return m ? { role: m[1].trim(), company: m[2].trim() } : { role: t.replace(/^vaga home office:\s*/i, '').trim(), company: null };
 }
 
-export async function fetchEmpregostec() {
+export async function fetchEmpregostec(step = () => {}) {
   const xml = await getText(FEED);
   if (!xml) return [];
   let cache = {};
@@ -61,7 +61,9 @@ export async function fetchEmpregostec() {
 
   const jobs = [];
   const fresh = {};
-  for (const item of parseFeed(xml)) {
+  const items = parseFeed(xml);
+  for (const [i, item] of items.entries()) {
+    step(i + 1, items.length, 'lendo vagas do feed');
     const { role, company } = splitTitle(item.title);
     if (!item.link || !DEV_TITLE.test(role)) continue;
     // A página de uma vaga não muda: baixa uma vez só.

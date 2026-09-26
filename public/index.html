@@ -79,6 +79,7 @@
   <button class="btn ghost" onclick="openSetup()" title="Seu perfil, currículo, palavras-chave e Gmail">⚙️ Configurações</button>
 </header>
 <main>
+  <div id="huntBanner"></div>
   <div class="kpis" id="kpis"></div>
   <nav id="tabs">
     <button data-tab="responses">📬 Respostas <span id="respBadge"></span></button>
@@ -147,8 +148,7 @@ function render() {
   $('#batchInfo').textContent = b.running
     ? `Enviando ${b.done}/${b.total}${b.nextAt ? ` · próximo às ${new Date(b.nextAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`
     : [S.lastRun && `Última busca: ${fmt(S.lastRun.at)}`, S.lastSync && `Gmail conferido: ${fmt(S.lastSync)}`].filter(Boolean).join(' · ');
-  $('#huntBtn').disabled = S.hunting || !S.configured;
-  $('#huntBtn').textContent = S.hunting ? 'Buscando…' : 'Buscar vagas agora';
+  if (P) renderProgress(); else $('#huntBtn').disabled = !S.configured;
 
   document.querySelectorAll('#tabs button').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
   const newImportant = S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length;
@@ -560,9 +560,17 @@ async function saveSetup(btn) {
   btn.disabled = true;
   try {
     await api('/api/setup', { perfil: p, cv: setup.cv, gmailAppPassword: setup.pass });
+    const firstTime = !setup.configured;
     closeSetup();
-    toast('✔ Configuração salva. Clique em "Buscar vagas agora" para a primeira busca.', 7000);
-    load();
+    await load();
+    if (firstTime) {
+      // Primeira configuração: já começa a primeira busca, com o progresso na tela.
+      toast('✔ Tudo pronto! Começando a primeira busca de vagas…', 6000);
+      await api('/api/hunt', {});
+      pollProgress();
+    } else {
+      toast('✔ Configurações salvas. A próxima busca já usa as novas palavras-chave.', 6000);
+    }
   } catch (e) {
     const box = $('#setupError'); box.textContent = e.message; box.style.display = 'inline-block';
     btn.disabled = false;
@@ -571,9 +579,66 @@ async function saveSetup(btn) {
 
 $('#tabs').addEventListener('click', (e) => { if (e.target.dataset.tab) { tab = e.target.dataset.tab; render(); } });
 $('#huntBtn').addEventListener('click', async () => {
-  S.hunting = true; render();
-  await api('/api/hunt', {}); toast('✔ Busca concluída'); load();
+  $('#huntBtn').disabled = true;
+  await api('/api/hunt', {});
+  pollProgress();
 });
+
+// ---- Progresso da busca (botão ou agendada) ----
+const SOURCE_NAMES = { gupy: 'Gupy', lever: 'Lever', greenhouse: 'Greenhouse', inhire: 'InHire', solides: 'Sólides', empregostec: 'Empregos Tech', github: 'GitHub' };
+let P = null;
+let pollTimer = null;
+let wasRunning = false;
+const elapsed = (from, to = Date.now()) => {
+  const s = Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, '0')}s`;
+};
+
+function renderProgress() {
+  const box = $('#huntBanner');
+  const recentlyDone = P?.finishedAt && Date.now() - new Date(P.finishedAt) < 90 * 1000;
+  $('#huntBtn').disabled = Boolean(P?.running) || !S?.configured;
+  if (!P?.running && !recentlyDone) { box.innerHTML = ''; $('#huntBtn').textContent = 'Buscar vagas agora'; return; }
+
+  const list = Object.entries(P.sources ?? {});
+  const done = list.filter(([, s]) => s.status === 'done' || s.status === 'error').length;
+  const current = list.find(([, s]) => s.status === 'running');
+  const partial = current && current[1].total ? current[1].done / current[1].total : 0;
+  const pct = P.running ? Math.min(99, Math.round(((done + partial) / list.length) * 100)) : 100;
+  $('#huntBtn').textContent = P.running ? `Buscando… ${pct}%` : 'Buscar vagas agora';
+
+  const chips = list.map(([name, s]) => {
+    const label = SOURCE_NAMES[name] ?? name;
+    if (s.status === 'done') return `<span class="pill ok">✓ ${label} · ${s.found}</span>`;
+    if (s.status === 'error') return `<span class="pill err" title="${esc(s.error)}">✖ ${label}</span>`;
+    if (s.status === 'running') return `<span class="pill warn">⏳ ${label}${s.total ? ` · ${esc(s.label)} (${s.done} de ${s.total})` : '…'}</span>`;
+    return `<span class="pill brand" style="opacity:.6">${label}</span>`;
+  }).join(' ');
+
+  box.innerHTML = P.running
+    ? `<div class="card">
+        <div class="row"><b>🔎 Buscando vagas…</b><span class="muted">${done} de ${list.length} fontes · ${elapsed(P.startedAt)}</span></div>
+        <div style="height:8px;background:var(--line);border-radius:99px;margin:10px 0;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--brand);transition:width .6s"></div></div>
+        <div class="row" style="gap:6px">${chips}</div>
+        ${P.firstRun ? '<p class="muted" style="margin:10px 0 0">⏱️ A primeira busca demora mais (5 a 10 min): ela baixa a descrição de cada vaga. As próximas levam cerca de 3 min. Pode navegar à vontade enquanto isso.</p>' : ''}
+      </div>`
+    : `<div class="card row"><b>✔ Busca concluída</b>
+        <span class="muted">${P.summary?.approved ?? 0} vagas aprovadas · ${P.summary?.new ?? 0} novas · ${elapsed(P.startedAt, P.finishedAt)}</span>
+        <div style="flex:1"></div><button class="btn ghost" onclick="tab='platform'; render()">Ver vagas</button></div>`;
+}
+
+async function pollProgress() {
+  clearTimeout(pollTimer);
+  try { P = await api('/api/progress'); } catch { P = null; }
+  renderProgress();
+  // Terminou agora: recarrega as vagas.
+  if (wasRunning && !P?.running) { toast(`✔ Busca concluída: ${P?.summary?.new ?? 0} vagas novas`, 6000); load(); }
+  wasRunning = Boolean(P?.running);
+  // Rápido durante a busca; devagar no resto do tempo (para notar a busca agendada).
+  pollTimer = setTimeout(pollProgress, P?.running ? 2000 : 15000);
+}
+pollProgress();
 
 function autoImport() {
   // A notificação de "várias respostas" abre o painel direto na aba Respostas.

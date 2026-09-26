@@ -36,12 +36,13 @@ export async function addTenants(names) {
 export const tenantsInLinks = (links) =>
   [...new Set(links.map((l) => l.match(/^https?:\/\/([a-z0-9-]+)\.inhire\.(?:app|com\.br)/i)?.[1]).filter(Boolean))];
 
-export async function fetchInhire(seed) {
+export async function fetchInhire(seed, step = () => {}) {
   const { tenants, saved } = await loadTenants(seed);
   const cache = await readJson(CACHE_FILE, {});
   const jobs = [];
   const invalid = [];
-  for (const tenant of tenants) {
+  for (const [i, tenant] of tenants.entries()) {
+    step(i + 1, tenants.length, `empresa ${tenant}`);
     const headers = { 'X-Tenant': tenant, 'X-Client': 'web-inhire' };
     const list = await getJson(`${API}/lean`, { headers, delayMs: 250 });
     if (!Array.isArray(list)) {

@@ -2,9 +2,11 @@ import { getJson } from '../http.js';
 
 const API = 'https://employability-portal.gupy.io/api/v1/jobs';
 
-export async function fetchGupy(terms) {
+export async function fetchGupy(terms, step = () => {}) {
   const byId = new Map();
-  for (const [term, workplaceType] of terms.flatMap((t) => [[t, 'remote'], [t, 'hybrid']])) {
+  const searches = terms.flatMap((t) => [[t, 'remote'], [t, 'hybrid']]);
+  for (const [i, [term, workplaceType]] of searches.entries()) {
+    step(i + 1, searches.length, `buscando "${term}"`);
     for (let offset = 0; offset < 1000; offset += 100) {
       const q = new URLSearchParams({ jobName: term, limit: 100, offset, workplaceType });
       const page = await getJson(`${API}?${q}`);

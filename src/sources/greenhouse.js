@@ -36,13 +36,14 @@ function countryOf(location) {
   return rest || null; // só "Remote": país desconhecido, o filtro decide pelo texto
 }
 
-export async function fetchGreenhouse(seed) {
+export async function fetchGreenhouse(seed, step = () => {}) {
   const saved = await readSaved();
   const invalid = new Set(saved.invalid);
   const boards = [...new Set([...seed, ...saved.boards])].filter((b) => !invalid.has(b));
   const jobs = [];
   const nowInvalid = [];
-  for (const board of boards) {
+  for (const [i, board] of boards.entries()) {
+    step(i + 1, boards.length, `empresa ${board}`);
     const res = await getJson(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs?content=true`, { delayMs: 300 });
     if (!res) { nowInvalid.push(board); continue; }
     for (const p of res.jobs ?? []) {

@@ -11,20 +11,25 @@ import { evaluate, dedupKey } from './filter.js';
 import { loadStore, saveStore } from './store.js';
 import { writeReport } from './report.js';
 import { requireProfile } from './profile.js';
+import { startProgress, sourceStarted, sourceStep, sourceFinished, finishProgress } from './progress.js';
 
 // Sem tela: sem perfil configurado, avisa e sai.
 requireProfile();
 
+// Cada fonte recebe step(feitos, total, rótulo) para o painel mostrar o progresso ao vivo.
 const sources = {
-  gupy: () => fetchGupy(config.gupyTerms),
+  gupy: (step) => fetchGupy(config.gupyTerms, step),
   lever: () => fetchLever(config.leverCompanies),
-  greenhouse: () => fetchGreenhouse(config.greenhouseBoards),
-  inhire: () => fetchInhire(config.inhireTenants),
-  solides: () => fetchSolides(config.solidesTerms),
-  empregostec: () => fetchEmpregostec(),
+  greenhouse: (step) => fetchGreenhouse(config.greenhouseBoards, step),
+  inhire: (step) => fetchInhire(config.inhireTenants, step),
+  solides: (step) => fetchSolides(config.solidesTerms, step),
+  empregostec: (step) => fetchEmpregostec(step),
 };
+if (!config.githubRepos?.length) delete sources.github;
 
 const store = await loadStore();
+// Primeira busca = sem vagas guardadas ainda (demora mais: baixa a descrição de cada vaga).
+startProgress(Object.keys(sources), { firstRun: !Object.keys(store.jobs).length });
 
 // Empresas do Greenhouse vistas nos e-mails de candidatura (lidos pela aba Respostas).
 const resp = await loadResponses();
@@ -33,7 +38,11 @@ if (fromEmails.length) console.log(`  (Greenhouse: ${fromEmails.length} empresas
 const raw = [];
 for (const [name, fetcher] of Object.entries(sources)) {
   process.stdout.write(`→ ${name}... `);
-  const jobs = await fetcher().catch((e) => (console.warn(e.message), []));
+  sourceStarted(name);
+  let error = null;
+  const jobs = await fetcher((done, total, label) => sourceStep(name, done, total, label))
+    .catch((e) => { error = e.message; console.warn(e.message); return []; });
+  sourceFinished(name, jobs.length, error);
   console.log(`${jobs.length}`);
   raw.push(...jobs);
 }
@@ -77,4 +86,5 @@ store.runs.push({ at: now, collected: raw.length, approved: approved.size, new: 
 await saveStore(store);
 
 const path = await writeReport([...approved.values()], newIds, { collected: raw.length, rejected });
+finishProgress({ collected: raw.length, approved: approved.size, new: newIds.size });
 console.log(`\n✔ ${approved.size} vagas aprovadas (${newIds.size} novas). Relatório: ${fileURLToPath(path)}`);

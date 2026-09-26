@@ -11,6 +11,8 @@ import { syncInbox, discoverInhireTenants } from './inbox.js';
 import { loadResponses, checkResponses, markSeen, trashResponses } from './responses.js';
 import { loadProfile, saveProfile } from './profile.js';
 import { openGmail } from './imap.js';
+import { readProgress } from './progress.js';
+import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT ?? 4321);
 const INTERVAL_SEC = Number(process.env.SEND_INTERVAL_SEC ?? 90);
@@ -54,6 +56,10 @@ async function discoverTenants() {
 }
 discoverTenants();
 setInterval(discoverTenants, 6 * 60 * 60 * 1000);
+
+// Busca em andamento = começou, não terminou e deu sinal de vida nos últimos 3 min
+// (vale também para a busca agendada, que roda em outro processo).
+const huntRunning = (p) => Boolean(p?.startedAt && !p.finishedAt && Date.now() - new Date(p.updatedAt ?? p.startedAt) < 3 * 60 * 1000);
 
 // Grava/atualiza GMAIL_APP_PASSWORD no .env e já passa a usar (sem reiniciar).
 async function saveGmailPassword(pass) {
@@ -268,12 +274,18 @@ const routes = {
     await saveStore(store);
     return { ok: true };
   },
+  // Dispara a busca em segundo plano e responde na hora; o painel acompanha por /api/progress.
   'POST /api/hunt': async () => {
-    if (hunting) return { ok: true };
+    if (hunting || huntRunning(readProgress())) return { ok: true, already: true };
     hunting = true;
-    await new Promise((resolve) => spawn(process.execPath, ['src/hunt.js'], { stdio: 'inherit' }).on('exit', resolve));
-    hunting = false;
+    spawn(process.execPath, [fileURLToPath(new URL('./hunt.js', import.meta.url))], {
+      stdio: 'inherit', cwd: fileURLToPath(new URL('..', import.meta.url)),
+    }).on('exit', () => { hunting = false; });
     return { ok: true };
+  },
+  'GET /api/progress': async () => {
+    const p = readProgress();
+    return { ...p, running: hunting || huntRunning(p) };
   },
 };
 

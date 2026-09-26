@@ -72,10 +72,12 @@ function toJob(j) {
   };
 }
 
-export async function fetchSolides(terms) {
+export async function fetchSolides(terms, step = () => {}) {
   const byId = new Map();
   // Remoto em qualquer lugar + qualquer modalidade em Florianópolis (o filtro decide o híbrido).
-  for (const [term, where] of terms.flatMap((t) => [[t, 'remoto'], [t, 'florianopolis-sc']])) {
+  const searches = terms.flatMap((t) => [[t, 'remoto'], [t, 'florianopolis-sc']]);
+  for (const [i, [term, where]] of searches.entries()) {
+    step(i + 1, searches.length, `buscando "${term}"`);
     for (let page = 1; page <= MAX_PAGES; page++) {
       const html = await getText(`${BASE}/${encodeURIComponent(term)}/${where}?page=${page}`, { delayMs: 500 });
       if (!html) break;
