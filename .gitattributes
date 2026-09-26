@@ -1,0 +1,7 @@
+# Finais de linha consistentes em qualquer sistema
+* text=auto eol=lf
+# Scripts do Windows precisam de CRLF
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.png binary
+*.pdf binary

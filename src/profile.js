@@ -36,7 +36,8 @@ const DEFAULT_BUSCA = {
 // Outras stacks: se a vaga só fala delas (e não da sua), é descartada.
 const OTHER_STACKS = ['angular', 'vue', 'java', '.net', 'c#', 'php', 'python', 'golang', 'ruby', 'kotlin', 'flutter', 'react native', 'ios', 'android'];
 
-function compile(perfil) {
+// Perfil → regras de busca compiladas (exportado para os testes montarem regras próprias).
+export function compile(perfil) {
   const busca = { ...DEFAULT_BUSCA, ...perfil.busca };
   const own = busca.stack.map((s) => s.toLowerCase());
   return {

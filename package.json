@@ -4,14 +4,37 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js --abrir",
+    "painel": "node --env-file-if-exists=.env src/server.js",
     "hunt": "node --env-file-if-exists=.env src/hunt.js",
+    "respostas": "node --env-file-if-exists=.env src/check-responses.js",
     "apply": "node --env-file-if-exists=.env src/apply.js",
-    "run": "npm run hunt && npm run apply -- --send",
-    "painel": "node --env-file-if-exists=.env src/server.js"
+    "agendar": "node src/schedule.js",
+    "desagendar": "node src/schedule.js --remover",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "description": "Agente que busca vagas de tecnologia em várias plataformas, filtra pelo seu perfil, escreve candidaturas e acompanha as respostas no Gmail.",
-  "license": "MIT"
+  "license": "MIT",
+  "author": "Flavia Machado Martini",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FlaviaMMartini/hunter-vagas.git"
+  },
+  "homepage": "https://github.com/FlaviaMMartini/hunter-vagas#readme",
+  "bugs": "https://github.com/FlaviaMMartini/hunter-vagas/issues",
+  "keywords": [
+    "vagas",
+    "emprego",
+    "job-search",
+    "gupy",
+    "inhire",
+    "greenhouse",
+    "ocr",
+    "gmail",
+    "nodejs",
+    "zero-dependencies"
+  ]
 }

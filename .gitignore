@@ -7,3 +7,5 @@ data/
 perfil/*
 !perfil/perfil.example.json
 *.log
+# Caminho do Node gravado por "npm run agendar" (é da sua máquina)
+scripts/node-path.txt

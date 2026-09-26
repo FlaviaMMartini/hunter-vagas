@@ -307,4 +307,21 @@ http.createServer(async (req, res) => {
   } catch (err) {
     res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: err.message }));
   }
-}).listen(PORT, '127.0.0.1', () => console.log(`🎯 Painel do Hunter: http://localhost:${PORT}`));
+}).on('error', (err) => {
+  // Porta ocupada quase sempre = o painel já está aberto em outra janela/tarefa.
+  if (err.code === 'EADDRINUSE') {
+    const other = process.platform === 'win32' ? '$env:PORT=4400; npm start' : 'PORT=4400 npm start';
+    console.error(`\n✖ A porta ${PORT} já está em uso — o painel provavelmente já está rodando: http://localhost:${PORT}\n  (Para usar outra porta: ${other})\n`);
+    process.exit(1);
+  }
+  throw err;
+}).listen(PORT, '127.0.0.1', () => {
+  const url = `http://localhost:${PORT}`;
+  console.log(`🎯 Painel do Hunter: ${url}`);
+  // "npm start" abre o navegador sozinho.
+  if (process.argv.includes('--abrir')) {
+    const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+      : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  }
+});
