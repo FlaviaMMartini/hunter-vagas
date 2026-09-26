@@ -72,15 +72,18 @@ git clone https://github.com/FlaviaMMartini/hunter-vagas.git
 cd hunter-vagas
 ```
 
-1. **Seu perfil** — copie `perfil/perfil.example.json` para `perfil/perfil.json`, preencha e coloque seu
-   currículo em PDF na pasta `perfil/` (o caminho vai no campo `"cv"`).
-2. **Senha de app do Gmail** — copie `.env.example` para `.env` e siga as instruções dentro dele.
-3. **Rode:**
+1. **Abra o painel:**
 
 ```bash
 npm run painel     # painel em http://localhost:4321
-npm run hunt       # busca vagas em todas as fontes (o botão "Buscar vagas agora" faz o mesmo)
 ```
+
+2. **Siga o assistente** que abre na primeira vez (depois fica em ⚙️ Configurações): seus dados,
+   currículo em PDF, palavras-chave da busca, textos da carta e a senha de app do Gmail — com botão
+   para testar a conexão. Tudo fica só no seu computador (`perfil/` e `.env`, fora do Git).
+3. **Clique em "Buscar vagas agora"** — ou pelo terminal: `npm run hunt`.
+
+> Prefere editar à mão? Copie `perfil/perfil.example.json` para `perfil/perfil.json` e `.env.example` para `.env`.
 
 4. **Automático (Windows, opcional)** — no Agendador de Tarefas, agende:
    - `scripts/buscar-vagas-oculto.vbs` — a cada 1 hora (busca de vagas);
