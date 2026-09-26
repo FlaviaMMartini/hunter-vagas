@@ -1,6 +1,6 @@
 // Painel local: http://localhost:4321
 import http from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { loadStore, saveStore } from './store.js';
 import { loadPerfil, buildQueue, sendApplication } from './queue.js';
@@ -92,12 +92,18 @@ async function state() {
   };
 }
 
-async function runBatch(items) {
-  Object.assign(batch, { running: true, total: items.length, done: 0, failed: 0 });
+// O lote fica salvo em disco: se o painel reiniciar (ou o PC desligar), ele continua de onde parou.
+const BATCH_FILE = new URL('../data/envio-em-lote.json', import.meta.url);
+const saveBatchFile = (items) => writeFile(BATCH_FILE, JSON.stringify({ savedAt: new Date().toISOString(), items }, null, 2));
+
+async function runBatch(items, { resumed = false } = {}) {
+  Object.assign(batch, { running: true, total: items.length, done: 0, failed: 0, resumed });
+  await saveBatchFile(items);
   const perfil = await loadPerfil();
   for (const [i, item] of items.entries()) {
     const store = await loadStore();
-    if (store.jobs[item.id]?.status !== 'nova') continue;
+    // Já enviada (ou descartada) desde que o lote começou: pula — nunca envia duas vezes.
+    if (store.jobs[item.id]?.status !== 'nova') { await saveBatchFile(items.slice(i + 1)); continue; }
     try {
       await sendApplication(store, perfil, { jobId: item.id, to: item.to, subject: item.subject, body: item.body });
       batch.done++;
@@ -105,14 +111,24 @@ async function runBatch(items) {
       batch.failed++;
       if (/535|534|auth/i.test(err.message)) break;
     }
+    await saveBatchFile(items.slice(i + 1));
     if (i < items.length - 1) {
       const wait = (INTERVAL_SEC + Math.random() * INTERVAL_SEC) * 1000;
       batch.nextAt = new Date(Date.now() + wait).toISOString();
       await sleep(wait);
     }
   }
+  await rm(BATCH_FILE, { force: true });
   Object.assign(batch, { running: false, nextAt: null });
 }
+
+// Ao iniciar: havia um lote pela metade? Continua.
+readFile(BATCH_FILE, 'utf8').then((raw) => {
+  const { items = [] } = JSON.parse(raw);
+  if (!items.length) return rm(BATCH_FILE, { force: true });
+  console.log(`↻ Retomando envio em lote: ${items.length} candidatura(s) pendente(s).`);
+  runBatch(items, { resumed: true });
+}).catch(() => {});
 
 const body = (req) => new Promise((resolve) => {
   let s = '';

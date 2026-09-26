@@ -47,6 +47,10 @@ export function cleanRole(raw, company) {
     .replace(/^[^\wÀ-ú]+/, '')
     .replace(/^(nova\s+)?vaga\s*(aberta\s*)?(home office|remota)?\s*(de\s|para\s|:|–|-)?\s*/i, '')
     .replace(/^(home office|remoto|100% remoto)\s*[:\-–]\s*/i, '')
+    // "na Bradata: Dev Fullstack" → "Dev Fullstack"
+    .replace(/^(na|no|da|do|em)\s+[^:]{2,40}:\s*/i, '')
+    // Campos que vêm colados no título: "… Modelo: 100% Remoto | PJ", "… Remuneração: R$ …"
+    .replace(/\s+(modelo|modalidade|local|regime|contrata[çc][ãa]o|sal[aá]rio|remunera[çc][ãa]o|formato)\s*:.*$/i, '')
     .replace(/\s+na empresa\s+.+$/i, '')
     .split(/[!]|\.\s|,\s|\s[–—|]\s(?=\S)/)[0]
     .replace(/\s+(100%\s*)?\b(remot[oa]|remote|home office|h[ií]brid[oa])\b.*$/i, '')
@@ -60,9 +64,10 @@ export function cleanRole(raw, company) {
 
 // Acha o cargo no corpo de um post: "Vaga: X", "Buscamos X", ou a 1ª linha com cara de cargo.
 export function extractRole(text, company) {
-  const lines = (text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  // Linhas que são links não têm cargo ("…/vagas/123/dev-react" enganava a busca por "vaga").
+  const lines = (text ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/https?:\/\/|www\.|\.\w{2,4}\/\S/.test(l));
   const patterns = [
-    /\bvaga\s*(?:aberta\s*)?(?:de\s|para\s|:|–|-)?\s*(.+)/i,
+    /\bvaga\b\s*(?:aberta\s*)?(?:de\s|para\s|:|–|-)?\s*(.+)/i,
     /\b(?:procuramos|buscamos|contratando|contratamos|hiring|oportunidade(?:\s+para|\s+de|:)?)\s*(?:um\(a\)|uma?|pessoa)?\s*(.+)/i,
   ];
   for (const re of patterns) {
