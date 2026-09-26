@@ -10,6 +10,10 @@ import { fetchEmpregostec } from './sources/empregostec.js';
 import { evaluate, dedupKey } from './filter.js';
 import { loadStore, saveStore } from './store.js';
 import { writeReport } from './report.js';
+import { requireProfile } from './profile.js';
+
+// Sem tela: sem perfil configurado, avisa e sai.
+requireProfile();
 
 const sources = {
   gupy: () => fetchGupy(config.gupyTerms),

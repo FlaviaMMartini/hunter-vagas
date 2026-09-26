@@ -1,15 +1,14 @@
 import { loadProfile } from './profile.js';
 
-// Suas preferências de busca vêm de perfil/perfil.json (seção "busca").
-const { search } = loadProfile();
-
+// Suas preferências de busca vêm de perfil/perfil.json (seção "busca"), lidas na hora do uso:
+// se você mudar o perfil pelo painel, a próxima busca já usa o novo.
 export const config = {
-  search,
+  get search() { return loadProfile().search; },
   // Termos buscados nas plataformas que pesquisam por palavra (Gupy, Sólides).
   // O filtro final olha título + corpo, então termos amplos são bons.
-  gupyTerms: search.termos,
-  solidesTerms: search.termos,
-  maxAgeDays: search.idadeMaximaDias,
+  get gupyTerms() { return this.search.termos; },
+  get solidesTerms() { return this.search.termos; },
+  get maxAgeDays() { return this.search.idadeMaximaDias; },
   // Empresas com página pública no Lever. Adicione slugs à vontade.
   leverCompanies: ['ciandt'],
   // Empresas no Greenhouse (job-boards.greenhouse.io/empresa). A lista cresce sozinha em

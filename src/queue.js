@@ -1,12 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { loadProfile } from './profile.js';
 import { writeApplication } from './writer.js';
 import { sendMail } from './mailer.js';
 import { saveStore } from './store.js';
 
 const SAME_RECIPIENT_DAYS = 7;
 
-export const loadPerfil = async () =>
-  JSON.parse(await readFile(new URL('../perfil/perfil.json', import.meta.url), 'utf8'));
+export const loadPerfil = async () => loadProfile().perfil;
 
 // Vagas com e-mail ainda não enviadas, sem repetir destinatário em poucos dias.
 export function buildQueue(store, perfil) {

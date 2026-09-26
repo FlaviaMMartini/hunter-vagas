@@ -4,6 +4,10 @@ import { loadStore } from './store.js';
 import { loadPerfil } from './queue.js';
 import { checkResponses, markNotified } from './responses.js';
 import { notify } from './notify.js';
+import { requireProfile } from './profile.js';
+
+// Sem tela: sem perfil configurado, avisa e sai.
+requireProfile();
 
 const NOTIFY = {
   entrevista: '🟢 Convite / próxima etapa',

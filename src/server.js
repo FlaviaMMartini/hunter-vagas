@@ -1,6 +1,6 @@
 // Painel local: http://localhost:4321
 import http from 'node:http';
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { loadStore, saveStore } from './store.js';
 import { loadPerfil, buildQueue, sendApplication } from './queue.js';
@@ -9,6 +9,8 @@ import { addTenants, tenantsInLinks } from './sources/inhire.js';
 import { addBoards, boardsInText } from './sources/greenhouse.js';
 import { syncInbox, discoverInhireTenants } from './inbox.js';
 import { loadResponses, checkResponses, markSeen, trashResponses } from './responses.js';
+import { loadProfile, saveProfile } from './profile.js';
+import { openGmail } from './imap.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 const INTERVAL_SEC = Number(process.env.SEND_INTERVAL_SEC ?? 90);
@@ -53,6 +55,18 @@ async function discoverTenants() {
 discoverTenants();
 setInterval(discoverTenants, 6 * 60 * 60 * 1000);
 
+// Grava/atualiza GMAIL_APP_PASSWORD no .env e já passa a usar (sem reiniciar).
+async function saveGmailPassword(pass) {
+  const file = new URL('../.env', import.meta.url);
+  const current = await readFile(file, 'utf8').catch(() => '');
+  const line = `GMAIL_APP_PASSWORD=${pass}`;
+  const next = /^GMAIL_APP_PASSWORD=.*$/m.test(current)
+    ? current.replace(/^GMAIL_APP_PASSWORD=.*$/m, line)
+    : `${current.trimEnd()}${current.trim() ? '\n' : ''}${line}\n`;
+  await writeFile(file, next);
+  process.env.GMAIL_APP_PASSWORD = pass;
+}
+
 // Ordena do mais novo para o mais antigo; registro sem data vai para o fim em vez de derrubar o painel.
 const byDesc = (a, b) => String(b ?? '').localeCompare(String(a ?? ''));
 
@@ -72,6 +86,8 @@ async function state() {
     responsesCheckedAt: resp?.lastCheck ?? null,
     email: perfil.email,
     nome: perfil.nome,
+    // false = primeira execução: o painel abre o assistente de configuração.
+    configured: loadProfile().configured,
     // Vaga que a busca automática não encontra há 2 dias provavelmente foi encerrada: some da lista.
     // (As que você capturou ficam, porque não são revistas pela busca.)
     platform: jobs.filter((j) => j.channel === 'plataforma' && j.status === 'nova'
@@ -94,7 +110,10 @@ async function state() {
 
 // O lote fica salvo em disco: se o painel reiniciar (ou o PC desligar), ele continua de onde parou.
 const BATCH_FILE = new URL('../data/envio-em-lote.json', import.meta.url);
-const saveBatchFile = (items) => writeFile(BATCH_FILE, JSON.stringify({ savedAt: new Date().toISOString(), items }, null, 2));
+const saveBatchFile = async (items) => {
+  await mkdir(new URL('../data/', import.meta.url), { recursive: true });
+  await writeFile(BATCH_FILE, JSON.stringify({ savedAt: new Date().toISOString(), items }, null, 2));
+};
 
 async function runBatch(items, { resumed = false } = {}) {
   Object.assign(batch, { running: true, total: items.length, done: 0, failed: 0, resumed });
@@ -184,6 +203,38 @@ const routes = {
     try { stats.total = JSON.parse(raw).total; } catch {}
     await saveStore(store);
     return stats;
+  },
+  // ---- Assistente de configuração (primeira execução e ⚙️ Configurações) ----
+  'GET /api/setup': async () => {
+    const { perfil, configured } = loadProfile();
+    const cvExists = Boolean(perfil.cv) && (await stat(new URL(`../${perfil.cv}`, import.meta.url)).then(() => true, () => false));
+    return { configured, perfil, cvExists, hasPassword: Boolean(process.env.GMAIL_APP_PASSWORD) };
+  },
+  'POST /api/setup': async (req) => {
+    const { perfil, cv, gmailAppPassword } = await body(req);
+    if (!perfil?.nome?.trim()) throw new Error('Preencha o seu nome.');
+    if (!/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(perfil.email ?? '')) throw new Error('Preencha um e-mail válido.');
+    if (!perfil.busca?.stack?.length) throw new Error('Informe ao menos uma palavra-chave da sua stack.');
+    if (cv?.data) {
+      if (!/\.pdf$/i.test(cv.name ?? '')) throw new Error('O currículo precisa ser um PDF.');
+      const buf = Buffer.from(cv.data, 'base64');
+      if (buf.length > 10 * 1024 * 1024) throw new Error('Currículo maior que 10 MB.');
+      const name = cv.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_');
+      await mkdir(new URL('../perfil/', import.meta.url), { recursive: true });
+      await writeFile(new URL(`../perfil/${name}`, import.meta.url), buf);
+      perfil.cv = `perfil/${name}`;
+    }
+    saveProfile(perfil);
+    if (gmailAppPassword?.trim()) await saveGmailPassword(gmailAppPassword.trim());
+    return { ok: true };
+  },
+  'POST /api/setup/test-gmail': async (req) => {
+    const { email, gmailAppPassword } = await body(req);
+    const pass = (gmailAppPassword?.trim() || process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+    if (!pass) throw new Error('Informe a senha de app do Gmail.');
+    const gmail = await openGmail({ user: email, pass });
+    await gmail.close();
+    return { ok: true };
   },
   'POST /api/responses/seen': async (req) => {
     const { uids } = await body(req);

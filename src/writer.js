@@ -3,7 +3,7 @@
 import { loadProfile, termRegex } from './profile.js';
 
 // "Desenvolvedor(a)" vira o gênero do perfil ("feminino" → Desenvolvedora).
-const FEMININO = (loadProfile().perfil.genero ?? 'feminino') === 'feminino';
+const isFeminine = () => (loadProfile().perfil.genero ?? 'feminino') === 'feminino';
 const SKILL_PATTERNS = {
   'Next.js': /next\.?js/i, 'Node.js': /node(\.?js)?\b/i, 'CI/CD': /ci\s?\/\s?cd|pipeline/i,
   'REST': /\brest(ful)?\b/i, 'Design System': /design system/i, 'Microfrontends': /micro-?\s?front/i,
@@ -41,7 +41,7 @@ export function cleanRole(raw, company) {
   }
   // Respeita maiúsculas: "DESENVOLVEDOR(A)" → "DESENVOLVEDORA", não "DESENVOLVEDOra".
   const suffix = (word, s) => word + (word === word.toUpperCase() ? s.toUpperCase() : s);
-  role = (FEMININO
+  role = (isFeminine()
     ? role.replace(/(\w+)o\(a\)/gi, (_, w) => suffix(w, 'a')).replace(/(\w+r)\(a\)/gi, (_, w) => suffix(w, 'a'))
     : role.replace(/\((a|as)\)/gi, ''))
     .replace(/^[^\wÀ-ú]+/, '')

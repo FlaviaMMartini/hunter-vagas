@@ -6,6 +6,10 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { loadStore } from './store.js';
 import { loadPerfil, buildQueue, sendApplication } from './queue.js';
 import { sendMail } from './mailer.js';
+import { requireProfile } from './profile.js';
+
+// Sem tela: sem perfil configurado, avisa e sai.
+requireProfile();
 
 const MODE = process.argv.includes('--send') ? 'send' : process.argv.includes('--test') ? 'test' : 'preview';
 const MAX_PER_RUN = Number(process.env.MAX_SENDS_PER_RUN ?? 20);

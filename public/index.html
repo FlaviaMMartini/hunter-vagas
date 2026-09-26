@@ -57,6 +57,17 @@
   ol li { margin-bottom: 6px; }
   .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center; color: var(--muted); }
   .drop.over { border-color: var(--brand); background: var(--brand-soft); }
+  .modal { position: fixed; inset: 0; background: rgba(10, 8, 20, .55); display: flex; align-items: flex-start; justify-content: center; padding: 32px 16px; overflow-y: auto; z-index: 50; }
+  .modal[hidden] { display: none; }
+  .modal-box { background: var(--panel); border-radius: 16px; width: min(760px, 100%); padding: 22px 24px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 16px; }
+  .steps span { padding: 4px 12px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 13px; border: 1px solid var(--line); }
+  .steps span.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 14px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .check { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; color: var(--ink); font-size: 14px; }
+  .check input { width: auto; }
+  .hl { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -65,6 +76,7 @@
   <div class="spacer"></div>
   <span id="batchInfo" class="muted"></span>
   <button class="btn ghost" id="huntBtn">Buscar vagas agora</button>
+  <button class="btn ghost" onclick="openSetup()" title="Seu perfil, currículo, palavras-chave e Gmail">⚙️ Configurações</button>
 </header>
 <main>
   <div class="kpis" id="kpis"></div>
@@ -79,6 +91,7 @@
   <section id="view"></section>
 </main>
 <div class="toast" id="toast"></div>
+<div class="modal" id="setupModal" hidden><div class="modal-box" id="setupBox"></div></div>
 
 <script>
 let S = null;
@@ -115,6 +128,8 @@ async function load() {
     return;
   }
   render();
+  // Primeira execução: abre o assistente de configuração.
+  if (!S.configured && !setup) openSetup();
 }
 
 function render() {
@@ -132,7 +147,7 @@ function render() {
   $('#batchInfo').textContent = b.running
     ? `Enviando ${b.done}/${b.total}${b.nextAt ? ` · próximo às ${new Date(b.nextAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`
     : [S.lastRun && `Última busca: ${fmt(S.lastRun.at)}`, S.lastSync && `Gmail conferido: ${fmt(S.lastSync)}`].filter(Boolean).join(' · ');
-  $('#huntBtn').disabled = S.hunting;
+  $('#huntBtn').disabled = S.hunting || !S.configured;
   $('#huntBtn').textContent = S.hunting ? 'Buscando…' : 'Buscar vagas agora';
 
   document.querySelectorAll('#tabs button').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
@@ -377,6 +392,178 @@ async function force(id) {
   load();
 }
 async function removeDiscarded(id) { await api('/api/discard-remove', { id }); load(); }
+
+// ---- Assistente de configuração ----
+// Cada campo tem data-path (ex.: "busca.stack"); data-type="list" = lista separada por vírgula.
+let setup = null;
+const STEPS = ['Você', 'Currículo', 'O que você procura', 'Sua carta', 'Gmail'];
+const LEVELS = {
+  'Júnior': ['júnior', 'junior', 'jr'],
+  'Estágio': ['estágio', 'estagio', 'estagiário', 'estagiária', 'intern', 'internship'],
+  'Trainee': ['trainee'],
+  'Aprendiz': ['aprendiz'],
+  'Pleno': ['pleno', 'pl', 'mid-level'],
+  'Sênior': ['sênior', 'senior', 'sr'],
+};
+const getPath = (o, p) => p.split('.').reduce((a, k) => a?.[k], o);
+const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => (a[k] ??= {}), o)[last] = v; };
+const toList = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+
+async function openSetup() {
+  const r = await api('/api/setup');
+  const perfil = structuredClone(r.perfil);
+  if (!r.configured) {
+    // Primeira vez: nada de dados de exemplo nos campos pessoais nem na carta — só como dica.
+    for (const k of ['nome', 'email', 'telefone', 'linkedin', 'github', 'cidade', 'cv']) perfil[k] = '';
+    perfil.pretensao = { pj: '', clt: '' };
+    perfil.carta = { ...perfil.carta, apresentacao: '', especialidade: '', cargoPadrao: '' };
+    perfil.destaques = [{ sempre: true, texto: '' }];
+  }
+  setup = { step: 0, perfil, configured: r.configured, cvExists: r.cvExists, hasPassword: r.hasPassword, cv: null, pass: '' };
+  $('#setupModal').hidden = false;
+  renderSetup();
+}
+function closeSetup() { $('#setupModal').hidden = true; setup = null; }
+
+const field = (label, path, { type = 'text', ph = '', hint = '', list = false } = {}) => {
+  const v = getPath(setup.perfil, path);
+  const val = list ? (v ?? []).join(', ') : (v ?? '');
+  return `<div><label>${label}</label>${type === 'textarea'
+    ? `<textarea data-path="${path}" ${list ? 'data-type="list"' : ''} style="min-height:80px" placeholder="${esc(ph)}">${esc(val)}</textarea>`
+    : `<input type="${type}" data-path="${path}" ${list ? 'data-type="list"' : ''} value="${esc(val)}" placeholder="${esc(ph)}">`}
+    ${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+};
+
+function setupStep() {
+  const p = setup.perfil;
+  switch (setup.step) {
+    case 0: return `<p class="muted">Esses dados vão na assinatura dos e-mails de candidatura.</p><div class="grid2">
+      ${field('Nome completo *', 'nome', { ph: 'Maria da Silva' })}
+      ${field('Seu e-mail (Gmail) *', 'email', { type: 'email', ph: 'maria@gmail.com', hint: 'As candidaturas saem deste e-mail, e as respostas são lidas dele.' })}
+      ${field('Telefone', 'telefone', { ph: '11999999999' })}
+      ${field('Cidade', 'cidade', { ph: 'São Paulo, SP' })}
+      ${field('LinkedIn', 'linkedin', { ph: 'https://www.linkedin.com/in/...' })}
+      ${field('GitHub / portfólio', 'github', { ph: 'https://github.com/...' })}
+      <div><label>Como escrever o cargo no assunto</label>
+        <select data-path="genero" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
+          <option value="feminino" ${p.genero !== 'masculino' ? 'selected' : ''}>Feminino (Desenvolvedora)</option>
+          <option value="masculino" ${p.genero === 'masculino' ? 'selected' : ''}>Masculino (Desenvolvedor)</option>
+        </select></div></div>`;
+    case 1: return `<p class="muted">O currículo vai anexado em cada e-mail de candidatura.</p>
+      <label>Currículo em PDF ${setup.cvExists && !setup.cv ? `<span class="pill ok">atual: ${esc(p.cv)}</span>` : ''}</label>
+      <input type="file" accept="application/pdf" onchange="pickCv(this.files[0])">
+      ${setup.cv ? `<div class="hint">✔ ${esc(setup.cv.name)} será salvo</div>` : ''}
+      <div class="grid2">
+        ${field('Pretensão PJ (opcional)', 'pretensao.pj', { ph: 'R$ 12.000', hint: 'Entra na carta quando a vaga pede pretensão.' })}
+        ${field('Pretensão CLT (opcional)', 'pretensao.clt', { ph: 'R$ 10.000' })}
+      </div>`;
+    case 2: {
+      const excl = new Set((p.busca?.niveisExcluidos ?? []).map((x) => x.toLowerCase()));
+      return `<p class="muted">O "cérebro" da busca: uma vaga só entra se citar a sua stack, no formato e no nível que você quer.</p>
+      ${field('Palavras-chave da sua stack *', 'busca.stack', { list: true, ph: 'react, react.js, reactjs', hint: 'Separe por vírgula. A vaga precisa citar pelo menos uma (no título ou na descrição).' })}
+      <div class="grid2">
+        ${field('Diferenciais (somam pontos)', 'busca.diferenciais', { list: true, ph: 'typescript, next.js' })}
+        ${field('Ignorar (não contam como sua stack)', 'busca.ignorar', { list: true, ph: 'react native' })}
+      </div>
+      ${field('Termos para pesquisar nas plataformas', 'busca.termos', { list: true, ph: 'react, frontend, fullstack, desenvolvedor', hint: 'O que o Hunter digita na busca da Gupy e da Sólides. Termos amplos trazem mais vagas — o filtro acima decide.' })}
+      <label>Formato</label>
+      <label class="check"><input type="checkbox" data-path="busca.remoto" data-type="bool" ${p.busca?.remoto !== false ? 'checked' : ''}> Aceito vagas remotas</label>
+      ${field('Híbrido / presencial só nestas cidades', 'busca.hibridoEm', { list: true, ph: 'florianópolis, são josé', hint: 'Deixe vazio para só remoto.' })}
+      <label>Níveis que você NÃO quer</label>
+      ${Object.entries(LEVELS).map(([name, terms]) => `<label class="check"><input type="checkbox" data-level="${name}" ${terms.some((t) => excl.has(t)) ? 'checked' : ''}> ${name}</label>`).join('')}
+      ${field('Ignorar vagas publicadas há mais de (dias)', 'busca.idadeMaximaDias', { type: 'number', ph: '45' })}`;
+    }
+    case 3: return `<p class="muted">A carta é montada só com o que você escrever aqui — o Hunter nunca inventa experiência.</p>
+      ${field('Como você se apresenta *', 'carta.apresentacao', { type: 'textarea', ph: 'sou Desenvolvedora Front-end Sênior com 8 anos de experiência em aplicações web, com foco em React e TypeScript.', hint: 'Continua a frase "Meu nome é (seu nome), …".' })}
+      ${field('Tecnologias que você domina', 'skills', { list: true, ph: 'React, TypeScript, Next.js, Jest, Node.js', hint: 'A carta cita as que também aparecem na vaga: "Vi que a vaga envolve …".' })}
+      ${field('Frase de especialidade (quando a vaga cita poucas das suas tecnologias)', 'carta.especialidade', { ph: 'React e TypeScript são minha principal especialidade.' })}
+      <div class="grid2">
+        ${field('Cargo para o assunto (quando a vaga não diz o cargo)', 'carta.cargoPadrao', { ph: 'Desenvolvedora Front-end Sênior' })}
+        ${field('Despedida', 'carta.despedida', { ph: 'Obrigada!' })}
+      </div>
+      <label>Parágrafos de destaque (até 3 entram em cada carta)</label>
+      ${(p.destaques ?? []).map((d, i) => `<div class="hl">
+        <textarea data-path="destaques.${i}.texto" style="min-height:70px" placeholder="Na Empresa X, liderei a migração do front-end para React, reduzindo o tempo de carga pela metade.">${esc(d.texto ?? '')}</textarea>
+        <div class="row" style="margin-top:6px">
+          <label class="check"><input type="checkbox" data-path="destaques.${i}.sempre" data-type="bool" ${d.sempre ? 'checked' : ''}> Sempre usar</label>
+          <input style="flex:1;min-width:200px" data-path="destaques.${i}.quando" data-type="list" value="${esc((d.quando ?? []).join(', '))}" placeholder="…ou só quando a vaga citar: design system, storybook">
+          <button class="btn ghost" onclick="setup.perfil.destaques.splice(${i},1); renderSetup()">✕</button>
+        </div></div>`).join('')}
+      <button class="btn ghost" onclick="(setup.perfil.destaques ??= []).push({ texto: '' }); renderSetup()">+ Adicionar destaque</button>`;
+    case 4: return `<p class="muted">Com a senha de app, o Hunter envia as candidaturas e lê as respostas no seu Gmail.
+        Você pode pular e configurar depois — o resto funciona sem.</p>
+      <ol>
+        <li>Ative a <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank">verificação em 2 etapas</a> do Google.</li>
+        <li>Crie uma <a href="https://myaccount.google.com/apppasswords" target="_blank">senha de app</a> (nome: "hunter"). O Google mostra 16 letras.</li>
+        <li>Cole aqui. Ela fica só no arquivo <code>.env</code> do seu computador.</li>
+      </ol>
+      <label>Senha de app do Gmail ${setup.hasPassword ? '<span class="pill ok">já configurada</span>' : ''}</label>
+      <input type="password" id="gmailPass" value="${esc(setup.pass)}" placeholder="${setup.hasPassword ? 'deixe vazio para manter a atual' : 'abcd efgh ijkl mnop'}" oninput="setup.pass=this.value">
+      <div class="row" style="margin-top:8px"><button class="btn ghost" onclick="testGmail(this)">Testar conexão</button><span id="gmailResult" class="muted"></span></div>`;
+  }
+}
+
+function renderSetup() {
+  const last = setup.step === STEPS.length - 1;
+  $('#setupBox').innerHTML = `<div class="row"><h2 style="margin:0">${setup.configured ? '⚙️ Configurações' : '👋 Vamos configurar o seu Hunter'}</h2>
+      <div style="flex:1"></div>${setup.configured ? '<button class="btn ghost" onclick="closeSetup()">Fechar</button>' : ''}</div>
+    <div class="steps">${STEPS.map((n, i) => `<span class="${i === setup.step ? 'on' : ''}" style="cursor:pointer" onclick="setup.step=${i}; renderSetup()">${i + 1}. ${n}</span>`).join('')}</div>
+    ${setupStep()}
+    <div id="setupError" class="pill err" style="display:none;margin-top:12px"></div>
+    <div class="row" style="margin-top:18px">
+      ${setup.step ? '<button class="btn ghost" onclick="setup.step--; renderSetup()">← Voltar</button>' : ''}
+      <div style="flex:1"></div>
+      ${last ? '<button class="btn" onclick="saveSetup(this)">Salvar e começar</button>' : '<button class="btn" onclick="setup.step++; renderSetup()">Próximo →</button>'}
+    </div>`;
+}
+
+// Liga os campos ao objeto do perfil.
+document.addEventListener('input', (e) => {
+  if (!setup || !e.target.closest('#setupBox')) return;
+  const el = e.target;
+  if (el.dataset.level) {
+    const all = Object.values(LEVELS).flat();
+    const chosen = [...document.querySelectorAll('#setupBox [data-level]')].filter((c) => c.checked).flatMap((c) => LEVELS[c.dataset.level]);
+    const others = (setup.perfil.busca?.niveisExcluidos ?? []).filter((t) => !all.includes(t.toLowerCase()));
+    return setPath(setup.perfil, 'busca.niveisExcluidos', [...others, ...chosen]);
+  }
+  if (!el.dataset.path) return;
+  const value = el.dataset.type === 'list' ? toList(el.value)
+    : el.dataset.type === 'bool' ? el.checked
+    : el.type === 'number' ? Number(el.value) || undefined : el.value;
+  setPath(setup.perfil, el.dataset.path, value);
+});
+document.addEventListener('change', (e) => { if (setup && e.target.closest('#setupBox') && (e.target.type === 'checkbox' || e.target.tagName === 'SELECT')) e.target.dispatchEvent(new Event('input', { bubbles: true })); });
+
+function pickCv(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { setup.cv = { name: file.name, data: reader.result.split(',')[1] }; renderSetup(); };
+  reader.readAsDataURL(file);
+}
+async function testGmail(btn) {
+  btn.disabled = true; $('#gmailResult').textContent = 'Testando…';
+  try {
+    await api('/api/setup/test-gmail', { email: setup.perfil.email, gmailAppPassword: setup.pass });
+    $('#gmailResult').textContent = '✔ Conectado ao Gmail';
+  } catch (e) { $('#gmailResult').textContent = `✖ ${e.message}`; }
+  btn.disabled = false;
+}
+async function saveSetup(btn) {
+  const p = setup.perfil;
+  // Destaques vazios não vão para o perfil.
+  p.destaques = (p.destaques ?? []).filter((d) => d.texto?.trim());
+  btn.disabled = true;
+  try {
+    await api('/api/setup', { perfil: p, cv: setup.cv, gmailAppPassword: setup.pass });
+    closeSetup();
+    toast('✔ Configuração salva. Clique em "Buscar vagas agora" para a primeira busca.', 7000);
+    load();
+  } catch (e) {
+    const box = $('#setupError'); box.textContent = e.message; box.style.display = 'inline-block';
+    btn.disabled = false;
+  }
+}
 
 $('#tabs').addEventListener('click', (e) => { if (e.target.dataset.tab) { tab = e.target.dataset.tab; render(); } });
 $('#huntBtn').addEventListener('click', async () => {
