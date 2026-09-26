@@ -155,7 +155,7 @@ function render() {
   $('#respBadge').innerHTML = newImportant ? `<span class="pill err">${newImportant}</span>` : '';
   document.title = newImportant ? `(${newImportant}) Hunter — Painel` : 'Hunter — Painel';
   $('#view').innerHTML = { responses: viewResponses, sent: viewSent, queue: viewQueue, platform: viewPlatform, discarded: viewDiscarded, capture: viewCapture }[tab]();
-  $('#userName').textContent = S.nome ? ` · ${S.nome.split(' ')[0]}` : '';
+  $('#userName').textContent = S.configured && S.nome ? ` · ${S.nome.split(' ')[0]}` : '';
   if ($('#bm')) $('#bm').href = bookmarkletHref;
 }
 
@@ -416,8 +416,11 @@ async function openSetup() {
     // Primeira vez: nada de dados de exemplo nos campos pessoais nem na carta — só como dica.
     for (const k of ['nome', 'email', 'telefone', 'linkedin', 'github', 'cidade', 'cv']) perfil[k] = '';
     perfil.pretensao = { pj: '', clt: '' };
-    perfil.carta = { ...perfil.carta, apresentacao: '', especialidade: '', cargoPadrao: '' };
+    perfil.carta = { ...perfil.carta, apresentacao: '', especialidade: '', cargoPadrao: '', despedida: '' };
     perfil.destaques = [{ sempre: true, texto: '' }];
+    // Afirmações sobre a pessoa começam vazias: a carta nunca pode citar o que ela não domina.
+    perfil.skills = [];
+    perfil.busca = { ...perfil.busca, hibridoEm: [] };
   }
   setup = { step: 0, perfil, configured: r.configured, cvExists: r.cvExists, hasPassword: r.hasPassword, cv: null, pass: '' };
   $('#setupModal').hidden = false;
@@ -479,7 +482,7 @@ function setupStep() {
       ${field('Frase de especialidade (quando a vaga cita poucas das suas tecnologias)', 'carta.especialidade', { ph: 'React e TypeScript são minha principal especialidade.' })}
       <div class="grid2">
         ${field('Cargo para o assunto (quando a vaga não diz o cargo)', 'carta.cargoPadrao', { ph: 'Desenvolvedora Front-end Sênior' })}
-        ${field('Despedida', 'carta.despedida', { ph: 'Obrigada!' })}
+        ${field('Despedida', 'carta.despedida', { ph: p.genero === 'masculino' ? 'Obrigado!' : 'Obrigada!' })}
       </div>
       <label>Parágrafos de destaque (até 3 entram em cada carta)</label>
       ${(p.destaques ?? []).map((d, i) => `<div class="hl">
@@ -553,6 +556,7 @@ async function saveSetup(btn) {
   const p = setup.perfil;
   // Destaques vazios não vão para o perfil.
   p.destaques = (p.destaques ?? []).filter((d) => d.texto?.trim());
+  if (!p.carta?.despedida?.trim()) setPath(p, 'carta.despedida', p.genero === 'masculino' ? 'Obrigado!' : 'Obrigada!');
   btn.disabled = true;
   try {
     await api('/api/setup', { perfil: p, cv: setup.cv, gmailAppPassword: setup.pass });

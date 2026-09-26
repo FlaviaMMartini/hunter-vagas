@@ -212,9 +212,10 @@ const routes = {
   },
   'POST /api/setup': async (req) => {
     const { perfil, cv, gmailAppPassword } = await body(req);
-    if (!perfil?.nome?.trim()) throw new Error('Preencha o seu nome.');
-    if (!/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(perfil.email ?? '')) throw new Error('Preencha um e-mail válido.');
-    if (!perfil.busca?.stack?.length) throw new Error('Informe ao menos uma palavra-chave da sua stack.');
+    if (!perfil?.nome?.trim()) throw new Error('Passo 1: preencha o seu nome.');
+    if (!/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(perfil.email ?? '')) throw new Error('Passo 1: preencha um e-mail válido.');
+    if (!perfil.busca?.stack?.length) throw new Error('Passo 3: informe ao menos uma palavra-chave da sua stack.');
+    if (!perfil.carta?.apresentacao?.trim()) throw new Error('Passo 4: escreva como você se apresenta (vai no começo de cada carta).');
     if (cv?.data) {
       if (!/\.pdf$/i.test(cv.name ?? '')) throw new Error('O currículo precisa ser um PDF.');
       const buf = Buffer.from(cv.data, 'base64');
