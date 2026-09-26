@@ -6,14 +6,19 @@ function connect(user, pass) {
   const socket = tls.connect(993, 'imap.gmail.com', { servername: 'imap.gmail.com' });
   socket.setEncoding('utf8');
   let buffer = '', tag = 0, pending = null;
-  const ready = new Promise((resolve) => socket.once('data', resolve));
+  let fail = null;
+  const ready = new Promise((resolve, reject) => { socket.once('data', resolve); fail = reject; });
   socket.on('data', (chunk) => {
     buffer += chunk;
     if (pending && new RegExp(`^A${tag} (OK|NO|BAD)`, 'm').test(buffer)) {
-      const r = buffer; buffer = ''; pending(r);
+      const r = buffer; buffer = ''; const p = pending; pending = null; p.resolve(r);
     }
   });
-  const cmd = (c) => new Promise((resolve) => { pending = resolve; socket.write(`A${++tag} ${c}\r\n`); });
+  // Queda de rede (ECONNRESET etc.) falha só o comando em andamento — nunca derruba o painel.
+  const onFail = (err) => { (pending?.reject ?? fail)?.(err); pending = null; };
+  socket.on('error', onFail);
+  socket.on('close', () => onFail(new Error('Conexão com o Gmail fechada')));
+  const cmd = (c) => new Promise((resolve, reject) => { pending = { resolve, reject }; socket.write(`A${++tag} ${c}\r\n`); });
   return { ready, cmd, close: () => socket.end(), user, pass };
 }
 
@@ -33,7 +38,7 @@ export async function discoverInhireTenants({ user, pass }) {
     const uids = (await search(imap, 'from:ses-mail.inhire.app newer_than:365d')).slice(-500);
     if (!uids.length) return [];
     const r = await imap.cmd(`UID FETCH ${uids.join(',')} (BODY.PEEK[HEADER.FIELDS (FROM)])`);
-    await imap.cmd('LOGOUT');
+    await imap.cmd('LOGOUT').catch(() => {});
     return [...new Set([...r.matchAll(/([a-z0-9-]+)@ses-mail\.inhire\.app/gi)].map((m) => m[1].toLowerCase()))];
   } finally {
     imap.close();
@@ -74,7 +79,7 @@ export async function syncInbox(store, { user, pass }) {
         changed++;
       }
     }
-    await imap.cmd('LOGOUT');
+    await imap.cmd('LOGOUT').catch(() => {});
   } finally {
     imap.close();
   }

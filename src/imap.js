@@ -6,16 +6,21 @@ export async function openGmail({ user, pass }) {
   const socket = tls.connect(993, 'imap.gmail.com', { servername: 'imap.gmail.com' });
   // Trabalhamos em latin1: 1 caractere = 1 byte, então os tamanhos {n} dos literais batem.
   let buffer = Buffer.alloc(0), tag = 0, pending = null;
-  const ready = new Promise((resolve, reject) => { socket.once('data', resolve); socket.once('error', reject); });
+  let fail = null;
+  const ready = new Promise((resolve, reject) => { socket.once('data', resolve); fail = reject; });
   socket.on('data', (chunk) => {
     buffer = Buffer.concat([buffer, chunk]);
     const text = buffer.toString('latin1');
     if (pending && new RegExp(`(^|\\r\\n)A${tag} (OK|NO|BAD)[^\\r\\n]*\\r\\n$`).test(text)) {
       buffer = Buffer.alloc(0);
-      pending(text);
+      const p = pending; pending = null; p.resolve(text);
     }
   });
-  const cmd = (c) => new Promise((resolve) => { pending = resolve; socket.write(`A${++tag} ${c}\r\n`); });
+  // Queda de rede (ECONNRESET etc.) falha só o comando em andamento — nunca derruba o painel.
+  const onFail = (err) => { (pending?.reject ?? fail)?.(err); pending = null; };
+  socket.on('error', onFail);
+  socket.on('close', () => onFail(new Error('Conexão com o Gmail fechada')));
+  const cmd = (c) => new Promise((resolve, reject) => { pending = { resolve, reject }; socket.write(`A${++tag} ${c}\r\n`); });
   await ready;
   buffer = Buffer.alloc(0);
   const login = await cmd(`LOGIN ${user} ${pass}`);

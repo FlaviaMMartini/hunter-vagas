@@ -14,6 +14,11 @@ import { openGmail } from './imap.js';
 import { readProgress } from './progress.js';
 import { fileURLToPath } from 'node:url';
 
+// Rede de segurança: um erro inesperado (ex.: queda de conexão com o Gmail) é registrado,
+// mas o painel continua no ar — envios em lote e buscas não podem morrer por isso.
+process.on('uncaughtException', (err) => console.error(`⚠️ erro inesperado (o painel continua): ${err.stack ?? err}`));
+process.on('unhandledRejection', (err) => console.error(`⚠️ erro inesperado (o painel continua): ${err?.stack ?? err}`));
+
 const PORT = Number(process.env.PORT ?? 4321);
 const INTERVAL_SEC = Number(process.env.SEND_INTERVAL_SEC ?? 90);
 const pub = (f) => new URL(`../public/${f}`, import.meta.url);
