@@ -30,7 +30,9 @@ const OTHER_STACKS = ['angular', 'vue', 'java', '.net', 'c#', 'php', 'python', '
 
 export function loadProfile() {
   if (!existsSync(FILE)) {
-    throw new Error('Falta perfil/perfil.json. Copie perfil/perfil.example.json para perfil/perfil.json e preencha com seus dados.');
+    // Primeira execução: mensagem clara, sem rastro técnico.
+    console.error('\n✖ Falta o seu perfil.\n  1. Copie perfil/perfil.example.json para perfil/perfil.json\n  2. Preencha com seus dados e coloque seu currículo em PDF na pasta perfil/\n  (detalhes no README, seção "Como usar")\n');
+    process.exit(1);
   }
   const perfil = JSON.parse(readFileSync(FILE, 'utf8'));
   const busca = { ...DEFAULT_BUSCA, ...perfil.busca };
