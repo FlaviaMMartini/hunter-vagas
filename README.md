@@ -50,6 +50,7 @@ No Linux/macOS, `npm run agendar` mostra as linhas prontas para o `crontab`.
 | 🧠 **Filtra pelo seu perfil** | Stack, diferenciais, níveis a excluir, remoto e cidades aceitas para híbrido |
 | 🧹 **Remove duplicatas** | A mesma vaga vista em duas fontes (ex.: agregador + Gupy) vira uma só |
 | 📸 **Captura por print** | Viu uma vaga num feed ou grupo? Cole o print (Ctrl+V): o OCR lê a vaga e acha o e-mail ou o link |
+| 📇 **Lista de contatos** | Cole uma tabela de empresas (responsável, e-mail, palavras-chave): cada uma recebe uma candidatura espontânea personalizada, com aderência calculada |
 | ✍️ **Escreve a candidatura** | Assunto e carta por vaga, usando só fatos do seu perfil que aparecem na vaga — nunca inventa experiência |
 | 📧 **Envia pelo Gmail** | Currículo anexo, intervalo aleatório entre envios, e o lote retoma sozinho se o PC reiniciar |
 | 📬 **Lê as respostas** | 🟢 entrevista · 🟡 etapa pendente · 🔴 não seguiu · ⚪ confirmação — com lixeira em lote |

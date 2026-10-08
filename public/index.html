@@ -71,6 +71,19 @@
   .check { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; color: var(--ink); font-size: 14px; }
   .check input { width: auto; }
   .hl { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+th.sortable::after {
+  transition: opacity 0.15s ease;
+}
 </style>
 </head>
 <body>
@@ -101,6 +114,10 @@
 let S = null;
 let tab = 'sent';
 let bookmarkletHref = '#';
+let platformSort = {
+  key: null,
+  direction: null,
+};
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (iso) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -111,6 +128,76 @@ const STATUS = {
 };
 const isToday =(iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
 
+function sortPlatform(key) {
+  if (platformSort.key === key) {
+    if (platformSort.direction === 'asc') {
+      platformSort.direction = 'desc';
+    } else if (platformSort.direction === 'desc') {
+      platformSort.key = null;
+      platformSort.direction = null;
+    }
+  } else {
+    platformSort.key = key;
+    platformSort.direction = 'asc';
+  }
+
+  render();
+}
+
+function getSortValue(job, key, applied) {
+  switch (key) {
+    case 'title':
+      return job.title ?? '';
+
+    case 'company':
+      return job.company ?? '';
+
+    case 'level':
+      return job.level ?? '';
+
+    case 'extras':
+      return (job.extras ?? []).join(', ');
+
+    case 'source':
+      return job.source ?? '';
+
+    case 'date':
+      return applied ? job.statusAt : job.firstSeenAt;
+
+    default:
+      return '';
+  }
+}
+
+function sortJobs(list, applied) {
+  if (!platformSort.key || !platformSort.direction) {
+    return list;
+  }
+
+  const direction = platformSort.direction === 'asc' ? 1 : -1;
+
+  return [...list].sort((a, b) => {
+    const valueA = getSortValue(a, platformSort.key, applied);
+    const valueB = getSortValue(b, platformSort.key, applied);
+
+    // Datas
+    if (platformSort.key === 'date') {
+      return (
+        (new Date(valueA).getTime() - new Date(valueB).getTime()) *
+        direction
+      );
+    }
+
+    return String(valueA).localeCompare(
+      String(valueB),
+      'pt-BR',
+      {
+        numeric: true,
+        sensitivity: 'base',
+      }
+    ) * direction;
+  });
+}
 function toast(msg, ms = 3500) {
   const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
   clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), ms);
@@ -211,26 +298,136 @@ function goTo(target, filters = {}) {
 
 function viewPlatform() {
   const applied = platformFilter === 'candidatadas';
-  const list = applied ? S.appliedJobs : S.platform;
+
+  const originalList = applied ? S.appliedJobs : S.platform;
+  const list = sortJobs(originalList, applied);
+
   const chips = `<div class="card row">
-      <button class="btn ${applied ? 'ghost' : ''}" onclick="platformFilter='pendentes'; render()">Para aplicar (${S.platform.length})</button>
-      <button class="btn ${applied ? '' : 'ghost'}" onclick="platformFilter='candidatadas'; render()">Já me candidatei (${S.appliedJobs.length})</button>
+      <button class="btn ${applied ? 'ghost' : ''}" onclick="platformFilter='pendentes'; render()">
+        Para aplicar (${S.platform.length})
+      </button>
+
+      <button class="btn ${applied ? '' : 'ghost'}" onclick="platformFilter='candidatadas'; render()">
+        Já me candidatei (${S.appliedJobs.length})
+      </button>
     </div>`;
-  if (!list.length) return chips + `<div class="card muted">${applied ? 'Você ainda não marcou nenhuma vaga como candidatada.' : 'Nenhuma vaga pendente.'}</div>`;
-  return chips + `<div class="card table-wrap"><table>
-    <thead><tr><th>Vaga</th><th>Empresa</th><th>Nível</th><th>Extras</th><th>Fonte</th><th>${applied ? 'Candidatura em' : 'Achada em'}</th><th></th></tr></thead>
-    <tbody>${list.map((j) => `<tr>
-      <td><a href="${esc(j.url)}" target="_blank">${esc(j.title)}</a>
-        ${j.modality && j.modality !== 'remoto' ? `<span class="pill warn">${esc(j.modality)}</span>` : ''}
-        ${j.stackUnknown ? '<span class="pill warn" title="O post não cita a stack do seu perfil; confira no link">stack não citada</span>' : ''}
-        ${j.postUrl ? `<br><small><a href="${esc(j.postUrl)}" target="_blank">ver origem</a></small>` : ''}</td>
-      <td>${esc(j.company ?? '—')}</td><td>${esc(j.level)}</td><td>${esc((j.extras ?? []).join(', '))}</td>
-      <td><span class="pill brand">${esc(j.source)}</span></td><td class="nowrap">${fmt(applied ? j.statusAt : j.firstSeenAt)}</td>
-      <td class="nowrap">${applied
-        ? `<button class="btn ghost" onclick="setStatus('${j.id}', 'nova')" title="Volta para a lista de vagas para aplicar">Desfazer</button>`
-        : `<button class="btn" onclick="setStatus('${j.id}', 'candidatada')">Já me candidatei</button>
-           <button class="btn ghost" onclick="setStatus('${j.id}', 'descartada')">✕</button>`}</td>
-    </tr>`).join('')}</tbody></table></div>`;
+
+  if (!list.length) {
+    return chips + `
+      <div class="card muted">
+        ${applied
+          ? 'Você ainda não marcou nenhuma vaga como candidatada.'
+          : 'Nenhuma vaga pendente.'}
+      </div>`;
+  }
+
+  const sortIcon = (key) => {
+    if (platformSort.key !== key) return '↕';
+
+    return platformSort.direction === 'asc'
+      ? '↑'
+      : '↓';
+  };
+
+  return chips + `
+    <div class="card table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortPlatform('title')">
+              Vaga ${sortIcon('title')}
+            </th>
+
+            <th class="sortable" onclick="sortPlatform('company')">
+              Empresa ${sortIcon('company')}
+            </th>
+
+            <th class="sortable" onclick="sortPlatform('level')">
+              Nível ${sortIcon('level')}
+            </th>
+
+            <th class="sortable" onclick="sortPlatform('extras')">
+              Extras ${sortIcon('extras')}
+            </th>
+
+            <th class="sortable" onclick="sortPlatform('source')">
+              Fonte ${sortIcon('source')}
+            </th>
+
+            <th class="sortable" onclick="sortPlatform('date')">
+              ${applied ? 'Candidatura em' : 'Achada em'} ${sortIcon('date')}
+            </th>
+
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${list.map((j) => `
+            <tr>
+              <td>
+                <a href="${esc(j.url)}" target="_blank">
+                  ${esc(j.title)}
+                </a>
+
+                ${j.modality && j.modality !== 'remoto'
+                  ? `<span class="pill warn">${esc(j.modality)}</span>`
+                  : ''}
+
+                ${j.stackUnknown
+                  ? '<span class="pill warn" title="O post não cita a stack do seu perfil; confira no link">stack não citada</span>'
+                  : ''}
+
+                ${j.postUrl
+                  ? `<br><small>
+                      <a href="${esc(j.postUrl)}" target="_blank">
+                        ver origem
+                      </a>
+                    </small>`
+                  : ''}
+              </td>
+
+              <td>${esc(j.company ?? '—')}</td>
+
+              <td>${esc(j.level)}</td>
+
+              <td>${esc((j.extras ?? []).join(', '))}</td>
+
+              <td>
+                <span class="pill brand">
+                  ${esc(j.source)}
+                </span>
+              </td>
+
+              <td class="nowrap">
+                ${fmt(applied ? j.statusAt : j.firstSeenAt)}
+              </td>
+
+              <td class="nowrap">
+                ${applied
+                  ? `<button
+                      class="btn ghost"
+                      onclick="setStatus('${j.id}', 'nova')"
+                      title="Volta para a lista de vagas para aplicar">
+                      Desfazer
+                    </button>`
+                  : `<button
+                      class="btn"
+                      onclick="setStatus('${j.id}', 'candidatada')">
+                      Já me candidatei
+                    </button>
+
+                    <button
+                      class="btn ghost"
+                      onclick="setStatus('${j.id}', 'descartada')">
+                      ✕
+                    </button>`}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 const IMPORTANT = ['entrevista', 'acao'];
@@ -326,8 +523,95 @@ function viewCapture() {
       <button class="btn ghost" onclick="draft=''; $('#pasteArea').value=''">Limpar</button>
       <small class="muted">Várias vagas de uma vez? Separe cada uma com uma linha <b>---</b></small>
     </div>
+  </div>` + viewContacts();
+}
+
+// ---- Lista de contatos: candidatura espontânea para várias empresas de uma vez ----
+let ct = { text: '', subject: null, preview: null, picked: new Set(), open: null };
+const FIT = { alta: 'ok', média: 'warn', baixa: 'err' };
+
+function viewContacts() {
+  const p = ct.preview;
+  const count = (lvl) => p?.rows.filter((r) => r.fit.level === lvl).length ?? 0;
+  return `<div class="card">
+    <h3 style="margin-top:0">📇 Lista de contatos — candidatura espontânea</h3>
+    <p class="muted">Tem uma lista de empresas/recrutadores? Cole uma tabela com <b>Empresa · Responsável · E-mail · Palavras-chave</b>
+      (uma empresa por linha; dá para copiar direto do Excel ou do Google Sheets). Cada uma recebe um e-mail personalizado —
+      saudação, suas tecnologias que batem com as palavras-chave, seus destaques, currículo anexo e contatos — e vai para a
+      <b>Fila de e-mail</b>, com o mesmo envio espaçado.</p>
+    <label>Assunto dos e-mails</label>
+    <input id="ctSubject" value="${esc(ct.subject ?? S.spontaneousSubject ?? '')}" placeholder="CANDIDATURA | Front End Developer | Full Stack">
+    <label>Lista (empresa, responsável, e-mail, palavras-chave)</label>
+    <textarea id="ctText" style="min-height:140px" placeholder="Datum	—	datum@job.recrut.ai	React, Fullstack, IA&#10;Protech Solutions	João Paulo	joaopaulo@protech.com.br	desenvolvimento, testes">${esc(ct.text)}</textarea>
+    <div class="row" style="margin-top:8px"><button class="btn" onclick="previewContacts(this)">Pré-visualizar</button>
+      ${p ? '<button class="btn ghost" onclick="ct.preview=null; ct.text=\'\'; render()">Limpar</button>' : ''}</div>
+    ${p ? `
+      <div class="row" style="margin-top:14px">
+        <b>${p.rows.length} empresas</b>
+        <span class="pill ok">alta ${count('alta')}</span><span class="pill warn">média ${count('média')}</span><span class="pill err">baixa ${count('baixa')}</span>
+        ${p.skipped.length ? `<details><summary class="muted">${p.skipped.length} ficaram de fora</summary>
+          <ul>${p.skipped.map((s) => `<li>${esc(s.empresa)} — ${esc(s.reason)}</li>`).join('')}</ul></details>` : ''}
+        <div style="flex:1"></div>
+        <button class="btn ghost" onclick="pickContacts(['alta','média'])">Marcar alta + média</button>
+        <button class="btn ghost" onclick="pickContacts(['alta','média','baixa'])">Todas</button>
+        <button class="btn ghost" onclick="pickContacts([])">Nenhuma</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th></th><th>Empresa</th><th>Saudação</th><th>E-mail</th><th>Aderência</th><th>Palavras-chave</th><th></th></tr></thead>
+        <tbody>${p.rows.map((r) => `<tr>
+          <td><input type="checkbox" style="width:auto" ${ct.picked.has(r.email) ? 'checked' : ''} onchange="toggleContact('${esc(r.email)}', this.checked)"></td>
+          <td>${esc(r.empresa)}${r.alreadySent ? ' <span class="pill brand" title="Você já mandou e-mail para este endereço">já enviado</span>' : ''}</td>
+          <td>${esc(r.greeting)}</td><td>${esc(r.email)}</td>
+          <td><span class="pill ${FIT[r.fit.level]}">${r.fit.level}</span></td>
+          <td><small>${esc(r.keywords.join(', '))}</small></td>
+          <td><button class="btn ghost" onclick="ct.open = ct.open === '${esc(r.email)}' ? null : '${esc(r.email)}'; render()">ver carta</button></td>
+        </tr>${ct.open === r.email ? `<tr><td></td><td colspan="6"><b>${esc(r.subject)}</b><pre style="white-space:pre-wrap;font:inherit">${esc(r.body)}</pre></td></tr>` : ''}`).join('')}</tbody>
+      </table></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" onclick="queueContactsNow(this)" ${ct.picked.size ? '' : 'disabled'}>Colocar ${ct.picked.size} na fila de e-mail</button>
+        <small class="muted">Depois é só revisar na <b>Fila de e-mail</b> e usar <b>Enviar todas</b> (1,5 a 3 min entre e-mails).</small>
+      </div>` : ''}
   </div>`;
 }
+
+async function previewContacts(btn) {
+  ct.text = $('#ctText').value;
+  ct.subject = $('#ctSubject').value;
+  if (!ct.text.trim()) return toast('Cole a lista primeiro.');
+  btn.disabled = true;
+  try {
+    ct.preview = await api('/api/contacts/preview', { text: ct.text, subject: ct.subject });
+    ct.subject = ct.preview.subject;
+    // Por padrão: aderência alta e média que ainda não receberam nada seu.
+    ct.picked = new Set(ct.preview.rows.filter((r) => r.fit.level !== 'baixa' && !r.alreadySent).map((r) => r.email));
+  } catch (e) { toast(`✖ ${e.message}`, 6000); }
+  render();
+}
+function pickContacts(levels) {
+  ct.picked = new Set(ct.preview.rows.filter((r) => levels.includes(r.fit.level) && !r.alreadySent).map((r) => r.email));
+  render();
+}
+function toggleContact(email, on) {
+  on ? ct.picked.add(email) : ct.picked.delete(email);
+  const btn = [...document.querySelectorAll('#view button')].find((b) => /na fila de e-mail$/.test(b.textContent));
+  if (btn) { btn.textContent = `Colocar ${ct.picked.size} na fila de e-mail`; btn.disabled = !ct.picked.size; }
+}
+async function queueContactsNow(btn) {
+  btn.disabled = true;
+  const rows = ct.preview.rows.filter((r) => ct.picked.has(r.email)).map(({ empresa, responsavel, email, keywords, fit }) => ({ empresa, responsavel, email, keywords, fit }));
+  try {
+    const r = await api('/api/contacts/queue', { rows, subject: ct.subject });
+    toast(`✔ ${r.added + r.updated} candidaturas na fila${r.alreadySent.length ? ` · ${r.alreadySent.length} já tinham sido enviadas` : ''}`, 7000);
+    ct = { text: '', subject: null, preview: null, picked: new Set(), open: null };
+    tab = 'queue';
+    load();
+  } catch (e) { toast(`✖ ${e.message}`, 6000); btn.disabled = false; }
+}
+// Guarda o que você digitou (o painel redesenha a tela em várias ações).
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'ctText') ct.text = e.target.value;
+  if (e.target.id === 'ctSubject') ct.subject = e.target.value;
+});
 
 // ---- Leitura de prints (OCR no navegador, com Tesseract.js — gratuito, sem IA paga) ----
 let draft = '';

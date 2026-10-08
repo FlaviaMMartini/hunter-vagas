@@ -12,6 +12,7 @@ import { loadResponses, checkResponses, markSeen, trashResponses } from './respo
 import { loadProfile, saveProfile } from './profile.js';
 import { openGmail } from './imap.js';
 import { readProgress } from './progress.js';
+import { parseContacts, writeSpontaneous, queueContacts, personName, defaultSubject } from './contacts.js';
 import { fileURLToPath } from 'node:url';
 
 // Rede de segurança: um erro inesperado (ex.: queda de conexão com o Gmail) é registrado,
@@ -97,6 +98,7 @@ async function state() {
     responsesCheckedAt: resp?.lastCheck ?? null,
     email: perfil.email,
     nome: perfil.nome,
+    spontaneousSubject: defaultSubject(perfil),
     // false = primeira execução: o painel abre o assistente de configuração.
     configured: loadProfile().configured,
     // Vaga que a busca automática não encontra há 2 dias provavelmente foi encerrada: some da lista.
@@ -252,6 +254,33 @@ const routes = {
     await gmail.close();
     return { ok: true };
   },
+  // ---- Candidatura espontânea: lista de contatos (empresa, responsável, e-mail, palavras-chave) ----
+  'POST /api/contacts/preview': async (req) => {
+    const { text, subject } = await body(req);
+    const [store, perfil] = await Promise.all([loadStore(), loadPerfil()]);
+    const { rows, skipped } = parseContacts(text ?? '');
+    const subj = subject?.trim() || defaultSubject(perfil);
+    // E-mails que já receberam algo seu (vaga ou candidatura espontânea), em qualquer data.
+    const sentTo = new Set(Object.values(store.jobs).filter((j) => j.sentTo).map((j) => j.sentTo.toLowerCase()));
+    return {
+      subject: subj,
+      skipped,
+      rows: rows.map((r) => ({
+        ...r,
+        greeting: personName(r.responsavel) ?? `equipe ${r.empresa}`,
+        alreadySent: sentTo.has(r.email),
+        ...writeSpontaneous(r, perfil, subj),
+      })),
+    };
+  },
+  'POST /api/contacts/queue': async (req) => {
+    const { rows, subject } = await body(req);
+    const [store, perfil] = await Promise.all([loadStore(), loadPerfil()]);
+    const result = queueContacts(store, rows ?? [], subject?.trim() || defaultSubject(perfil));
+    await saveStore(store);
+    return result;
+  },
+  'GET /api/contacts/subject': async () => ({ subject: defaultSubject(await loadPerfil()) }),
   'POST /api/responses/seen': async (req) => {
     const { uids } = await body(req);
     await markSeen(uids);

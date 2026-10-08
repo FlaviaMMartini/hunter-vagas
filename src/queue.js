@@ -1,5 +1,6 @@
 import { loadProfile } from './profile.js';
 import { writeApplication } from './writer.js';
+import { writeSpontaneous } from './contacts.js';
 import { sendMail } from './mailer.js';
 import { saveStore } from './store.js';
 
@@ -19,7 +20,12 @@ export function buildQueue(store, perfil) {
   for (const j of jobs.filter((j) => j.channel === 'email' && j.status === 'nova').sort((a, b) => b.score - a.score)) {
     if (contacted.has(j.emails[0])) continue;
     contacted.add(j.emails[0]);
-    queue.push({ job: j, ...writeApplication(j, perfil) });
+    // Candidatura espontânea (lista de contatos) tem carta própria; a carta é montada na hora,
+    // então mudanças no perfil já valem para quem ainda está na fila.
+    const letter = j.spontaneous
+      ? { to: j.emails[0], company: j.company, ...writeSpontaneous({ empresa: j.company, ...j.spontaneous }, perfil, j.spontaneous.subject) }
+      : writeApplication(j, perfil);
+    queue.push({ job: j, ...letter });
   }
   return queue;
 }
