@@ -9,6 +9,10 @@ export const config = {
   get gupyTerms() { return this.search.termos; },
   get solidesTerms() { return this.search.termos; },
   get maxAgeDays() { return this.search.idadeMaximaDias; },
+  // Termo principal da stack (ex.: "react") para as fontes que aceitam um termo só.
+  get stackTerm() { return this.search.stack[0] ?? 'react'; },
+  // Remotar: a stack + papéis amplos (o filtro final decide).
+  get remotarTerms() { return [...new Set([this.stackTerm, ...this.search.termos.slice(0, 2), 'frontend', 'fullstack'])]; },
   // Empresas com página pública no Lever. Adicione slugs à vontade.
   leverCompanies: ['ciandt'],
   // Empresas no Greenhouse (job-boards.greenhouse.io/empresa). A lista cresce sozinha em

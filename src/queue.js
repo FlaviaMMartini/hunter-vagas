@@ -3,6 +3,7 @@ import { writeApplication } from './writer.js';
 import { writeSpontaneous } from './contacts.js';
 import { sendMail } from './mailer.js';
 import { saveStore } from './store.js';
+import { needsEnglish, acceptsFluentEnglish } from './filter.js';
 
 const SAME_RECIPIENT_DAYS = 7;
 
@@ -17,7 +18,10 @@ export function buildQueue(store, perfil) {
       .flatMap((j) => [j.sentTo, j.emails?.[0]]),
   );
   const queue = [];
+  const english = acceptsFluentEnglish(perfil);
   for (const j of jobs.filter((j) => j.channel === 'email' && j.status === 'nova').sort((a, b) => b.score - a.score)) {
+    // Chave "inglês fluente" desligada: a vaga fica guardada, só não entra na fila.
+    if (!english && needsEnglish(j)) continue;
     if (contacted.has(j.emails[0])) continue;
     contacted.add(j.emails[0]);
     // Candidatura espontânea (lista de contatos) tem carta própria; a carta é montada na hora,

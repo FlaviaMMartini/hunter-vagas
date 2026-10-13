@@ -49,6 +49,11 @@
   .pill.warn { background: var(--warn-soft); color: var(--warn); }
   .pill.err { background: var(--err-soft); color: var(--err); }
   .pill.brand { background: var(--brand-soft); color: var(--brand); }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
+  .switch input { appearance: none; width: 34px; height: 20px; border-radius: 99px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+  .switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .switch input:checked { background: var(--brand); }
+  .switch input:checked::after { left: 16px; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   label { font-size: 13px; color: var(--muted); display: block; margin: 10px 0 4px; }
   input, textarea { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -91,6 +96,9 @@ th.sortable::after {
   <h1>🎯 <span>Hunter</span><span id="userName" style="color:var(--ink)"></span></h1>
   <div class="spacer"></div>
   <span id="batchInfo" class="muted"></span>
+  <label class="switch" title="Desligada: vagas que pedem inglês fluente (ou estão todas em inglês) somem da fila e da lista de vagas — nada é apagado, é só religar.">
+    <input type="checkbox" id="englishToggle"> <span>Vagas com inglês fluente</span></label>
+  <button class="btn ghost" id="emailHuntBtn" title="Varre posts públicos de vagas (GitHub, Hacker News, Sólides, Empregos Tech) atrás de vagas com e-mail e já coloca na fila de envio">📧 Varrer vagas com e-mail</button>
   <button class="btn ghost" id="huntBtn">Buscar vagas agora</button>
   <button class="btn ghost" onclick="openSetup()" title="Seu perfil, currículo, palavras-chave e Gmail">⚙️ Configurações</button>
 </header>
@@ -161,6 +169,9 @@ function getSortValue(job, key, applied) {
     case 'source':
       return job.source ?? '';
 
+    case 'contract':
+      return contractLabel(job);
+
     case 'date':
       return applied ? job.statusAt : job.firstSeenAt;
 
@@ -168,6 +179,15 @@ function getSortValue(job, key, applied) {
       return '';
   }
 }
+
+// Contrato: freelance/temporário × prazo indeterminado, com o regime quando a vaga diz.
+function contractLabel(j) {
+  const c = j.contract ?? {};
+  const kind = c.kind === 'temporario' ? 'Freelance/temporário' : 'Prazo indeterminado';
+  return c.regime && c.regime !== 'Freelance' ? `${kind} · ${c.regime}` : kind;
+}
+const contractPill = (j) => `<span class="pill ${j.contract?.kind === 'temporario' ? 'warn' : 'ok'}">${esc(contractLabel(j))}</span>`;
+const englishPill = (j) => (j.englishRequired ? '<span class="pill err" title="O anúncio pede inglês fluente/avançado (ou está todo em inglês)">🇺🇸 inglês fluente</span>' : '');
 
 function sortJobs(list, applied) {
   if (!platformSort.key || !platformSort.direction) {
@@ -239,7 +259,10 @@ function render() {
   $('#batchInfo').textContent = b.running
     ? `Enviando ${b.done}/${b.total}${b.nextAt ? ` · próximo às ${new Date(b.nextAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`
     : [S.lastRun && `Última busca: ${fmt(S.lastRun.at)}`, S.lastSync && `Gmail conferido: ${fmt(S.lastSync)}`].filter(Boolean).join(' · ');
-  if (P) renderProgress(); else $('#huntBtn').disabled = !S.configured;
+  if (P) renderProgress(); else $('#huntBtn').disabled = $('#emailHuntBtn').disabled = !S.configured;
+  $('#englishToggle').checked = S.acceptsFluentEnglish !== false;
+  $('#englishToggle').parentElement.querySelector('span').textContent = S.acceptsFluentEnglish === false
+    ? `Vagas com inglês fluente (${S.hiddenEnglish} ocultas)` : 'Vagas com inglês fluente';
 
   document.querySelectorAll('#tabs button').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
   const newImportant = S.responses.filter((r) => !r.seen && IMPORTANT.includes(r.category)).length;
@@ -274,6 +297,7 @@ function viewQueue() {
     S.queue.map((j, i) => `<div class="card" id="q${i}">
       <div class="row"><b>${esc(j.title)}</b> <span class="pill brand">${esc(j.source)}</span>
         ${j.modality && j.modality !== 'remoto' ? `<span class="pill warn">${esc(j.modality)}</span>` : ''}
+        ${j.source !== 'lista' ? contractPill(j) : ''} ${englishPill(j)}
         ${j.lastError ? `<span class="pill err" title="${esc(j.lastError)}">falhou</span>` : ''}
         <div style="flex:1"></div>
         ${j.url?.startsWith('http') ? `<a href="${esc(j.url)}" target="_blank">abrir vaga</a>` : ''}
@@ -350,6 +374,10 @@ function viewPlatform() {
               Extras ${sortIcon('extras')}
             </th>
 
+            <th class="sortable" onclick="sortPlatform('contract')">
+              Contrato ${sortIcon('contract')}
+            </th>
+
             <th class="sortable" onclick="sortPlatform('source')">
               Fonte ${sortIcon('source')}
             </th>
@@ -378,6 +406,8 @@ function viewPlatform() {
                   ? '<span class="pill warn" title="O post não cita a stack do seu perfil; confira no link">stack não citada</span>'
                   : ''}
 
+                ${englishPill(j)}
+
                 ${j.postUrl
                   ? `<br><small>
                       <a href="${esc(j.postUrl)}" target="_blank">
@@ -392,6 +422,8 @@ function viewPlatform() {
               <td>${esc(j.level)}</td>
 
               <td>${esc((j.extras ?? []).join(', '))}</td>
+
+              <td class="nowrap">${contractPill(j)}</td>
 
               <td>
                 <span class="pill brand">
@@ -929,9 +961,24 @@ $('#huntBtn').addEventListener('click', async () => {
   await api('/api/hunt', {});
   pollProgress();
 });
+$('#emailHuntBtn').addEventListener('click', async () => {
+  $('#emailHuntBtn').disabled = $('#huntBtn').disabled = true;
+  const r = await api('/api/hunt', { mode: 'emails' });
+  if (r.already) toast('Já tem uma busca em andamento — espere ela terminar.', 5000);
+  pollProgress();
+});
+$('#englishToggle').addEventListener('change', async (e) => {
+  await api('/api/settings/english', { accept: e.target.checked });
+  toast(e.target.checked ? '✔ Vagas com inglês fluente voltaram para a fila e a lista.' : '✔ Vagas que pedem inglês fluente agora ficam ocultas (nada foi apagado).', 5000);
+  load();
+});
 
 // ---- Progresso da busca (botão ou agendada) ----
-const SOURCE_NAMES = { gupy: 'Gupy', lever: 'Lever', greenhouse: 'Greenhouse', inhire: 'InHire', solides: 'Sólides', empregostec: 'Empregos Tech', github: 'GitHub' };
+const SOURCE_NAMES = {
+  gupy: 'Gupy', lever: 'Lever', greenhouse: 'Greenhouse', inhire: 'InHire', solides: 'Sólides', empregostec: 'Empregos Tech', github: 'GitHub',
+  remotar: 'Remotar', internacional: 'Remotas internacionais', freelance: 'Freelance (Freelancer.com, 99Freelas)', posts: 'Posts com e-mail (GitHub, HN)',
+};
+const isEmailSweep = () => P?.mode === 'emails';
 let P = null;
 let pollTimer = null;
 let wasRunning = false;
@@ -943,15 +990,15 @@ const elapsed = (from, to = Date.now()) => {
 function renderProgress() {
   const box = $('#huntBanner');
   const recentlyDone = P?.finishedAt && Date.now() - new Date(P.finishedAt) < 90 * 1000;
-  $('#huntBtn').disabled = Boolean(P?.running) || !S?.configured;
-  if (!P?.running && !recentlyDone) { box.innerHTML = ''; $('#huntBtn').textContent = 'Buscar vagas agora'; return; }
+  $('#huntBtn').disabled = $('#emailHuntBtn').disabled = Boolean(P?.running) || !S?.configured;
+  if (!P?.running && !recentlyDone) { box.innerHTML = ''; $('#huntBtn').textContent = 'Buscar vagas agora'; $('#emailHuntBtn').textContent = '📧 Varrer vagas com e-mail'; return; }
 
   const list = Object.entries(P.sources ?? {});
   const done = list.filter(([, s]) => s.status === 'done' || s.status === 'error').length;
   const current = list.find(([, s]) => s.status === 'running');
   const partial = current && current[1].total ? current[1].done / current[1].total : 0;
   const pct = P.running ? Math.min(99, Math.round(((done + partial) / list.length) * 100)) : 100;
-  $('#huntBtn').textContent = P.running ? `Buscando… ${pct}%` : 'Buscar vagas agora';
+  $(isEmailSweep() ? '#emailHuntBtn' : '#huntBtn').textContent = P.running ? `${isEmailSweep() ? '📧 Varrendo' : 'Buscando'}… ${pct}%` : isEmailSweep() ? '📧 Varrer vagas com e-mail' : 'Buscar vagas agora';
 
   const chips = list.map(([name, s]) => {
     const label = SOURCE_NAMES[name] ?? name;
@@ -963,13 +1010,17 @@ function renderProgress() {
 
   box.innerHTML = P.running
     ? `<div class="card">
-        <div class="row"><b>🔎 Buscando vagas…</b><span class="muted">${done} de ${list.length} fontes · ${elapsed(P.startedAt)}</span></div>
+        <div class="row"><b>${isEmailSweep() ? '📧 Varrendo posts atrás de vagas com e-mail…' : '🔎 Buscando vagas…'}</b><span class="muted">${done} de ${list.length} fontes · ${elapsed(P.startedAt)}</span></div>
         <div style="height:8px;background:var(--line);border-radius:99px;margin:10px 0;overflow:hidden">
           <div style="height:100%;width:${pct}%;background:var(--brand);transition:width .6s"></div></div>
         <div class="row" style="gap:6px">${chips}</div>
         ${P.firstRun ? '<p class="muted" style="margin:10px 0 0">⏱️ A primeira busca demora mais (5 a 10 min): ela baixa a descrição de cada vaga. As próximas levam cerca de 3 min. Pode navegar à vontade enquanto isso.</p>' : ''}
       </div>`
-    : `<div class="card row"><b>✔ Busca concluída</b>
+    : isEmailSweep()
+      ? `<div class="card row"><b>✔ Varredura concluída</b>
+        <span class="muted">${P.summary?.approved ?? 0} vagas com e-mail · ${P.summary?.new ?? 0} novas na fila · ${elapsed(P.startedAt, P.finishedAt)}</span>
+        <div style="flex:1"></div><button class="btn ghost" onclick="goTo('queue')">Ver fila de e-mail</button></div>`
+      : `<div class="card row"><b>✔ Busca concluída</b>
         <span class="muted">${P.summary?.approved ?? 0} vagas aprovadas · ${P.summary?.new ?? 0} novas · ${elapsed(P.startedAt, P.finishedAt)}</span>
         <div style="flex:1"></div><button class="btn ghost" onclick="tab='platform'; render()">Ver vagas</button></div>`;
 }
@@ -979,7 +1030,10 @@ async function pollProgress() {
   try { P = await api('/api/progress'); } catch { P = null; }
   renderProgress();
   // Terminou agora: recarrega as vagas.
-  if (wasRunning && !P?.running) { toast(`✔ Busca concluída: ${P?.summary?.new ?? 0} vagas novas`, 6000); load(); }
+  if (wasRunning && !P?.running) {
+    toast(isEmailSweep() ? `✔ Varredura concluída: ${P?.summary?.new ?? 0} vagas novas com e-mail na fila` : `✔ Busca concluída: ${P?.summary?.new ?? 0} vagas novas`, 6000);
+    load();
+  }
   wasRunning = Boolean(P?.running);
   // Rápido durante a busca; devagar no resto do tempo (para notar a busca agendada).
   pollTimer = setTimeout(pollProgress, P?.running ? 2000 : 15000);

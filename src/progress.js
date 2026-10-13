@@ -15,10 +15,11 @@ function flush(force = false) {
   writeFileSync(FILE, JSON.stringify(state, null, 2));
 }
 
-export function startProgress(sourceNames, { firstRun = false } = {}) {
+export function startProgress(sourceNames, { firstRun = false, mode = 'completa' } = {}) {
   state = {
     startedAt: new Date().toISOString(),
     firstRun,
+    mode,
     sources: Object.fromEntries(sourceNames.map((n) => [n, { status: 'pending' }])),
   };
   flush(true);

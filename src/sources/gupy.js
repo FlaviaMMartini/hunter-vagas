@@ -1,18 +1,25 @@
-import { getJson } from '../http.js';
+import { getText } from '../http.js';
 
-const API = 'https://employability-portal.gupy.io/api/v1/jobs';
+// A Gupy desligou a API aberta do portal (out/2026): a página de busca traz as vagas embutidas
+// (__NEXT_DATA__ → initialJobList), 12 por página, no mesmo formato de antes.
+const PORTAL = 'https://portal.gupy.io/job-search';
+const MAX_PAGES = 9;
+
+const pageData = (html) => {
+  const m = (html ?? '').match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  try { return JSON.parse(m[1]).props.pageProps.initialJobList; } catch { return null; }
+};
 
 export async function fetchGupy(terms, step = () => {}) {
   const byId = new Map();
-  const searches = terms.flatMap((t) => [[t, 'remote'], [t, 'hybrid']]);
-  for (const [i, [term, workplaceType]] of searches.entries()) {
-    step(i + 1, searches.length, `buscando "${term}"`);
-    for (let offset = 0; offset < 1000; offset += 100) {
-      const q = new URLSearchParams({ jobName: term, limit: 100, offset, workplaceType });
-      const page = await getJson(`${API}?${q}`);
-      if (!page?.data?.length) break;
-      for (const j of page.data) byId.set(j.id, j);
-      if (page.data.length < 100) break;
+  for (const [i, term] of terms.entries()) {
+    step(i + 1, terms.length, `buscando "${term}"`);
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const list = pageData(await getText(`${PORTAL}/term=${encodeURIComponent(term)}${page > 1 ? `&page=${page}` : ''}`));
+      if (!list?.data?.length) break;
+      for (const j of list.data) byId.set(j.id, j);
+      const { total = 0, limit = 12, offset = 0 } = list.pagination ?? {};
+      if (offset + limit >= total) break;
     }
   }
   return [...byId.values()].map((j) => ({

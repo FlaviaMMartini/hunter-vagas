@@ -6,7 +6,7 @@ const row = (j, isNew) =>
 
 const HEADER = '| Vaga | Empresa | Nível | Extras | E-mail | Idade | Fonte |\n|---|---|---|---|---|---|---|';
 
-export async function writeReport(jobs, newIds, stats) {
+export async function writeReport(jobs, newIds, stats, { suffix = '' } = {}) {
   const day = new Date().toISOString().slice(0, 10);
   const sorted = [...jobs].sort((a, b) => b.score - a.score || a.ageDays - b.ageDays);
   const byEmail = sorted.filter((j) => j.channel === 'email');
@@ -26,7 +26,7 @@ ${byEmail.map((j) => row(j, newIds.has(j.id))).join('\n')}
 ${HEADER}
 ${byPlatform.map((j) => row(j, newIds.has(j.id))).join('\n')}
 `;
-  const path = new URL(`../data/relatorio-${day}.md`, import.meta.url);
+  const path = new URL(`../data/relatorio-${day}${suffix}.md`, import.meta.url);
   await writeFile(path, md);
   return path;
 }

@@ -46,9 +46,12 @@ No Linux/macOS, `npm run agendar` mostra as linhas prontas para o `crontab`.
 
 | | |
 |---|---|
-| 🔎 **Busca em 6 fontes** | Gupy, InHire, Sólides, Greenhouse, Lever e Empregos Tech — de hora em hora |
+| 🔎 **Busca em 15+ fontes** | Gupy, InHire, Sólides, Greenhouse, Lever, Empregos Tech, Remotar, vagas remotas internacionais abertas ao Brasil (RemoteOK, Jobicy, We Work Remotely, Remotive) e freelance (Freelancer.com, 99Freelas) — de hora em hora |
+| 📧 **Varrer vagas com e-mail** | Um botão varre posts públicos de vagas (issues de vagas no GitHub, "Who is hiring" do Hacker News, Sólides, Empregos Tech) e coloca direto na fila só as que trazem e-mail de candidatura |
+| 📝 **Tipo de contrato** | Cada vaga mostra se é **freelance/temporária** ou **prazo indeterminado** (e CLT/PJ quando o anúncio diz) |
+| 🇺🇸 **Chave de inglês fluente** | Liga/desliga no painel: desligada, vagas que pedem inglês fluente (ou estão todas em inglês) somem da fila e da lista — nada é apagado |
 | 🧠 **Filtra pelo seu perfil** | Stack, diferenciais, níveis a excluir, remoto e cidades aceitas para híbrido |
-| 🧹 **Remove duplicatas** | A mesma vaga vista em duas fontes (ex.: agregador + Gupy) vira uma só |
+| 🧹 **Remove duplicatas** | A mesma vaga vista em duas fontes (ex.: agregador + Gupy) vira uma só, e vaga que você já tratou não volta por outra fonte |
 | 📸 **Captura por print** | Viu uma vaga num feed ou grupo? Cole o print (Ctrl+V): o OCR lê a vaga e acha o e-mail ou o link |
 | 📇 **Lista de contatos** | Cole uma tabela de empresas (responsável, e-mail, palavras-chave): cada uma recebe uma candidatura espontânea personalizada, com aderência calculada |
 | ✍️ **Escreve a candidatura** | Assunto e carta por vaga, usando só fatos do seu perfil que aparecem na vaga — nunca inventa experiência |
@@ -73,6 +76,7 @@ No Linux/macOS, `npm run agendar` mostra as linhas prontas para o `crontab`.
 flowchart LR
   subgraph Fontes
     A[Gupy] & B[InHire] & C[Sólides] & D[Greenhouse] & E[Lever] & F[Empregos Tech]
+    H[Remotar] & J[Remotas internacionais] & K[Freelance] & L[Posts com e-mail]
     P[📸 Print / texto colado]
   end
   Fontes --> N[Normaliza] --> X[Filtro do perfil] --> Y[Dedup entre fontes]
@@ -87,8 +91,11 @@ flowchart LR
   deduplicação e cartas não sabem de onde a vaga veio. Adicionar uma fonte é escrever um arquivo
   ([como contribuir](CONTRIBUTING.md)).
 - **Cada plataforma pelo caminho mais estável que ela oferece:** API pública oficial (Greenhouse, Lever),
-  API usada pelas próprias páginas de carreira (Gupy, InHire), dados estruturados da página (Sólides —
-  Next.js flight data; Empregos Tech — RSS + JSON-LD `JobPosting`).
+  API usada pelas próprias páginas de carreira (InHire, Remotar), APIs públicas de vagas (RemoteOK, Jobicy,
+  Remotive, Freelancer.com, busca de issues do GitHub, Hacker News via Algolia), dados estruturados da página
+  (Gupy e Sólides — dados do Next.js; Empregos Tech e We Work Remotely — RSS; 99Freelas — HTML público).
+- **Vagas internacionais só se abertas ao Brasil.** Worldwide, Anywhere, LATAM, Américas — vaga que exige
+  morar nos EUA/Europa é descartada.
 - **Listas de empresas que crescem sozinhas.** InHire e Greenhouse não têm portal central; o agente descobre
   empresas pelos links vistos nas outras fontes e pelos remetentes dos e-mails de recrutamento.
 - **Sem LLM, de propósito.** Classificação por regras e cartas montadas a partir do perfil: custo zero,
@@ -115,7 +122,8 @@ Tudo pelo assistente (⚙️ Configurações) — ou direto em `perfil/perfil.js
 | `busca.stack` | A vaga precisa citar pelo menos um destes (ex.: `react`, `reactjs`) |
 | `busca.ignorar` | Frases que **não** contam como a sua stack (ex.: `react native`) |
 | `busca.diferenciais` | Somam pontos e aparecem na coluna "Extras" (ex.: `typescript`) |
-| `busca.termos` | O que pesquisar nas plataformas que buscam por palavra (Gupy, Sólides) |
+| `busca.termos` | O que pesquisar nas plataformas que buscam por palavra (Gupy, Sólides, Remotar) |
+| `busca.aceitaInglesFluente` | `false` esconde vagas que exigem inglês fluente (a chave do painel muda isto) |
 | `busca.remoto` / `busca.hibridoEm` | Aceita remoto e/ou híbrido só nessas cidades |
 | `busca.niveisExcluidos` | Títulos com estes níveis são descartados (ex.: `júnior`, `estágio`) |
 | `carta.*` | Sua apresentação, cargo padrão para o assunto, fechamento e despedida |

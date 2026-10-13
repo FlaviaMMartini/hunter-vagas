@@ -32,6 +32,39 @@ const BRAZIL = /\b(br|brasil|brazil|latam|remote|remoto)\b/i;
 const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const BAD_EMAIL = /noreply|no-reply|example|github\.com|users\.noreply|sentry|\.(png|jpe?g|gif)$/i;
 
+// ---- Inglês: a vaga exige fluência? (a chave "aceitar inglês fluente" do painel usa isto) ----
+const FLUENT_EN = /ingl[eê]s\s*(?:\(|-|:)?\s*(?:fluente|avan[cç]ado|nativo|conversa[cç][aã]o|intermedi[aá]rio[\s/-]*avan[cç]ado)|flu[eê]ncia\s+(?:em|no)\s+ingl[eê]s|fluent\s+(?:in\s+)?english|english\s*(?:\(|-|:)?\s*(?:fluent|fluency|advanced|proficient|proficiency|c1|c2|native)|advanced\s+english|(?:full\s+)?professional\s+(?:working\s+)?proficiency\s+in\s+english|strong\s+(?:written\s+and\s+verbal\s+)?english|excellent\s+english/i;
+const EN_WORDS = /\b(the|and|you|with|for|our|will|are|we|your|team|experience|skills|work|this|have|about|role)\b/gi;
+const PT_WORDS = /\b(de|e|com|para|voc[eê]|nossa?|experi[eê]ncia|que|uma?|em|vaga|equipe|conhecimento|atua[cç][aã]o|desenvolvimento)\b/gi;
+
+// Exige inglês fluente: diz isso explicitamente, ou o anúncio inteiro está em inglês.
+export function englishRequired(job, text) {
+  if (job.englishHint === true) return true;
+  if (FLUENT_EN.test(`${job.title}\n${text}`)) return true;
+  const en = (text.match(EN_WORDS) ?? []).length;
+  const pt = (text.match(PT_WORDS) ?? []).length;
+  return en >= 15 && en > pt * 1.5;
+}
+
+// Vaga já guardada (de antes desta checagem ou capturada por você): calcula na hora.
+export const needsEnglish = (j) => !j.spontaneous && (j.englishRequired ?? englishRequired(j, j.text ?? ''));
+// Chave do painel: false = esconder vagas que exigem inglês fluente (da fila e da plataforma).
+export const acceptsFluentEnglish = (perfil) => perfil?.busca?.aceitaInglesFluente !== false;
+
+// ---- Contrato: freelance/temporário ou prazo indeterminado (+ regime CLT/PJ quando der) ----
+const TEMP = /freela(?:ncer?)?\b|freelance|\bfreela\b|tempor[aá]ri[oa]|prazo determinado|contrato de \d+\s*(?:meses|m[eê]s)|por projeto|projeto (?:pontual|fechado|freela)|job pontual|\bcontract(?:or)?\b(?!\s*(?:de|com))|short[- ]term|\d+[- ]months?\s+contract|hourly|part[- ]time|meio per[ií]odo/i;
+export function contractOf(job, text) {
+  const hint = job.contractHint ?? '';
+  const all = `${hint}\n${job.title}\n${text}`;
+  const kind = /freela|temporar|contract|part[_ -]?time|projeto|hourly|fixed/i.test(hint) || TEMP.test(all) ? 'temporario' : 'indeterminado';
+  const regime = /\bclt\b/i.test(all) && /\bpj\b|pessoa jur[ií]dica/i.test(all) ? 'CLT ou PJ'
+    : /\bclt\b|efetiv/i.test(all) ? 'CLT'
+    : /\bpj\b|pessoa jur[ií]dica/i.test(all) ? 'PJ'
+    : kind === 'temporario' && /freela|freelance|fixed|hourly|projeto/i.test(all) ? 'Freelance' : null;
+  return { kind, regime };
+}
+export const contractOfJob = (j) => j.contract ?? (j.spontaneous ? { kind: 'indeterminado', regime: null } : contractOf(j, j.text ?? ''));
+
 function level(title, text) {
   const t = `${title}
 ${text}`;
@@ -84,6 +117,8 @@ ${text}`;
     text,
     modality: remote ? 'remoto' : nearby ? 'híbrido/local' : 'não informado',
     stackUnknown: !hasStack,
+    englishRequired: englishRequired(job, text),
+    contract: contractOf(job, text),
     extras,
     level: lvl,
     emails,

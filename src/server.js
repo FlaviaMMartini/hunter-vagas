@@ -13,6 +13,7 @@ import { loadProfile, saveProfile } from './profile.js';
 import { openGmail } from './imap.js';
 import { readProgress } from './progress.js';
 import { parseContacts, writeSpontaneous, queueContacts, personName, defaultSubject } from './contacts.js';
+import { needsEnglish, acceptsFluentEnglish, contractOfJob } from './filter.js';
 import { fileURLToPath } from 'node:url';
 
 // Rede de segurança: um erro inesperado (ex.: queda de conexão com o Gmail) é registrado,
@@ -87,8 +88,11 @@ async function state() {
   const responses = Object.values(resp?.items ?? {}).filter((r) => r.category !== 'ruido' && !r.trashed)
     .sort((a, b) => byDesc(a.date, b.date))
     .map(({ text, notified, ...r }) => r);
-  const jobs = Object.values(store.jobs);
-  const pick = (j) => ({ id: j.id, title: j.title, company: j.company, url: j.url, postUrl: j.postUrl, source: j.source, level: j.level, modality: j.modality, extras: j.extras ?? (j.typescript ? ['typescript'] : []), score: j.score, firstSeenAt: j.firstSeenAt, lastError: j.lastError, stackUnknown: j.stackUnknown });
+  const english = acceptsFluentEnglish(perfil);
+  // Chave "inglês fluente" desligada: some das listas de vagas novas (fila e plataforma); nada é apagado.
+  const all = Object.values(store.jobs);
+  const jobs = english ? all : all.filter((j) => j.status !== 'nova' || !needsEnglish(j));
+  const pick = (j) => ({ id: j.id, title: j.title, company: j.company, url: j.url, postUrl: j.postUrl, source: j.source, level: j.level, modality: j.modality, extras: j.extras ?? (j.typescript ? ['typescript'] : []), score: j.score, firstSeenAt: j.firstSeenAt, lastError: j.lastError, stackUnknown: j.stackUnknown, englishRequired: needsEnglish(j), contract: contractOfJob(j) });
   return {
     sent: jobs.filter((j) => SENT_STATUSES.includes(j.status)).sort((a, b) => byDesc(a.sentAt, b.sentAt))
       .map((j) => ({ ...pick(j), status: j.status, statusAt: j.statusAt, sentAt: j.sentAt, sentTo: j.sentTo, subject: j.subject, message: j.message })),
@@ -120,6 +124,8 @@ async function state() {
       })),
     lastRun: store.runs.at(-1) ?? null,
     batch, hunting,
+    acceptsFluentEnglish: english,
+    hiddenEnglish: all.length - jobs.length,
     hasPassword: Boolean(process.env.GMAIL_APP_PASSWORD),
   };
 }
@@ -313,12 +319,22 @@ const routes = {
     return { ok: true };
   },
   // Dispara a busca em segundo plano e responde na hora; o painel acompanha por /api/progress.
-  'POST /api/hunt': async () => {
+  // { mode: 'emails' } = "varrer vagas com e-mail": só fontes com e-mail, e só vagas com e-mail.
+  'POST /api/hunt': async (req) => {
+    const { mode } = await body(req);
     if (hunting || huntRunning(readProgress())) return { ok: true, already: true };
     hunting = true;
-    spawn(process.execPath, [fileURLToPath(new URL('./hunt.js', import.meta.url))], {
+    spawn(process.execPath, [fileURLToPath(new URL('./hunt.js', import.meta.url)), ...(mode === 'emails' ? ['--emails'] : [])], {
       stdio: 'inherit', cwd: fileURLToPath(new URL('..', import.meta.url)),
     }).on('exit', () => { hunting = false; });
+    return { ok: true };
+  },
+  // Chave "aceitar vagas com inglês fluente" (fica no perfil: vale para o painel e para o envio).
+  'POST /api/settings/english': async (req) => {
+    const { accept } = await body(req);
+    const { perfil } = loadProfile();
+    perfil.busca = { ...perfil.busca, aceitaInglesFluente: Boolean(accept) };
+    saveProfile(perfil);
     return { ok: true };
   },
   'GET /api/progress': async () => {
