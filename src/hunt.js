@@ -12,6 +12,7 @@ import { fetchRemoteIntl } from './sources/remote-intl.js';
 import { fetchFreelance } from './sources/freelance.js';
 import { fetchPostsWithEmail } from './sources/posts-email.js';
 import { evaluate, dedupKey } from './filter.js';
+import { urlKey, excludedFor, fingerprintSet, isExcluded } from './excluded.js';
 import { loadStore, saveStore } from './store.js';
 import { writeReport } from './report.js';
 import { requireProfile } from './profile.js';
@@ -76,9 +77,6 @@ for (const job of raw) {
 
 // Agregadores (Empregos Tech, Remotar) apontam para a vaga original (Gupy, InHire…): a mesma vaga
 // chega por dois caminhos com títulos diferentes. O link de candidatura desempata.
-const urlKey = (u) => (u ?? '').toLowerCase().replace(/[?#].*$/, '')
-  .replace(/(\/vagas\/[0-9a-f-]{36})\/.*$/, '$1') // InHire: o final do link (slug) varia
-  .replace(/\/$/, '');
 const AGGREGATORS = ['empregostec', 'remotar'];
 const CAPTURED = ['captura', 'linkedin'];
 const byUrl = new Map();
@@ -91,11 +89,16 @@ for (const [key, r] of approved) {
   else approved.delete(key);
 }
 
+// A busca leva minutos: relê o que está salvo agora, para não desfazer o que você marcou
+// no painel enquanto ela rodava (✕, "Já me candidatei", envios).
+Object.assign(store, await loadStore());
+// Excluídas (✕): a mesma vaga não volta — nem por outra fonte, nem com o nome da empresa diferente.
+const excluded = fingerprintSet(await excludedFor(store));
 // Mesma vaga que você já tratou (candidatou, descartou, enviou) vinda por outra fonte/captura: não volta.
 const handled = Object.values(store.jobs).filter((j) => j.status !== 'nova');
 const handledKeys = new Set(handled.filter((j) => j.company).map(dedupKey));
 const handledUrls = new Set(handled.map((j) => urlKey(j.url)).filter(Boolean));
-const alreadyHandled = (j) => (j.company && handledKeys.has(dedupKey(j))) || handledUrls.has(urlKey(j.url));
+const alreadyHandled = (j) => (j.company && handledKeys.has(dedupKey(j))) || handledUrls.has(urlKey(j.url)) || isExcluded(excluded, j);
 for (const [id, j] of Object.entries(store.jobs)) {
   if (j.status === 'nova' && !CAPTURED.includes(j.source) && alreadyHandled(j)) delete store.jobs[id];
 }

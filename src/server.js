@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { loadStore, saveStore } from './store.js';
 import { loadPerfil, buildQueue, sendApplication } from './queue.js';
 import { parseCaptured, importPosts, forceImport, normalizeLink } from './posts.js';
+
 import { addTenants, tenantsInLinks } from './sources/inhire.js';
 import { addBoards, boardsInText } from './sources/greenhouse.js';
 import { syncInbox, discoverInhireTenants } from './inbox.js';
@@ -14,6 +15,7 @@ import { openGmail } from './imap.js';
 import { readProgress } from './progress.js';
 import { parseContacts, writeSpontaneous, queueContacts, personName, defaultSubject } from './contacts.js';
 import { needsEnglish, acceptsFluentEnglish, contractOfJob } from './filter.js';
+import { excludedFor, fingerprintSet, isExcluded, excludeJob, restoreJob } from './excluded.js';
 import { fileURLToPath } from 'node:url';
 
 // Rede de segurança: um erro inesperado (ex.: queda de conexão com o Gmail) é registrado,
@@ -88,6 +90,10 @@ async function state() {
   const responses = Object.values(resp?.items ?? {}).filter((r) => r.category !== 'ruido' && !r.trashed)
     .sort((a, b) => byDesc(a.date, b.date))
     .map(({ text, notified, ...r }) => r);
+  // Vaga nova que é a mesma de uma excluída (✕), vinda por outra fonte: nem aparece.
+  const ex = await excludedFor(store);
+  const exSet = fingerprintSet(ex);
+  for (const [id, j] of Object.entries(store.jobs)) if (j.status === 'nova' && isExcluded(exSet, j)) delete store.jobs[id];
   const english = acceptsFluentEnglish(perfil);
   // Chave "inglês fluente" desligada: some das listas de vagas novas (fila e plataforma); nada é apagado.
   const all = Object.values(store.jobs);
@@ -105,6 +111,7 @@ async function state() {
     spontaneousSubject: defaultSubject(perfil),
     // false = primeira execução: o painel abre o assistente de configuração.
     configured: loadProfile().configured,
+
     // Vaga que a busca automática não encontra há 2 dias provavelmente foi encerrada: some da lista.
     // (As que você capturou ficam, porque não são revistas pela busca.)
     platform: jobs.filter((j) => j.channel === 'plataforma' && j.status === 'nova'
@@ -126,6 +133,9 @@ async function state() {
     batch, hunting,
     acceptsFluentEnglish: english,
     hiddenEnglish: all.length - jobs.length,
+    excluded: Object.values(ex.items).sort((a, b) => byDesc(a.at, b.at)).slice(0, 300)
+      .map(({ fp, ...i }) => i),
+    excludedTotal: Object.keys(ex.items).length,
     hasPassword: Boolean(process.env.GMAIL_APP_PASSWORD),
   };
 }
@@ -179,12 +189,19 @@ const body = (req) => new Promise((resolve) => {
 async function setStatus(id, status) {
   const store = await loadStore();
   // statusAt: quando você marcou ("Já me candidatei" em …).
-  if (store.jobs[id]) Object.assign(store.jobs[id], { status, statusAt: new Date().toISOString() });
+  const job = store.jobs[id];
+  if (!job) return;
+  const was = job.status;
+  Object.assign(job, { status, statusAt: new Date().toISOString() });
   await saveStore(store);
+  // ✕ = vi e não vou aplicar: entra nas excluídas e a busca não traz de novo (nem por outra fonte).
+  if (status === 'descartada') await excludeJob(store, job);
+  else if (was === 'descartada') await restoreJob(store, id);
 }
 
 const routes = {
   'GET /': async (req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(await readFile(pub('index.html'))),
+
   'GET /api/state': async () => state(),
   'POST /api/send': async (req) => {
     const { id, to, subject, body: text } = await body(req);
@@ -200,6 +217,14 @@ const routes = {
     runBatch(items);
     return { ok: true };
   },
+  // Restaura uma excluída: volta para "Para aplicar" (se ainda existir) e sai da lista de excluídas.
+  'POST /api/excluded/restore': async (req) => {
+    const { id } = await body(req);
+    const store = await loadStore();
+    if (store.jobs[id]?.status === 'descartada') await setStatus(id, 'nova');
+    else await restoreJob(store, id);
+    return { ok: true };
+  },
   'POST /api/status': async (req) => {
     const { id, status } = await body(req);
     await setStatus(id, status);
@@ -208,6 +233,7 @@ const routes = {
   'POST /api/import': async (req) => {
     const { text } = await body(req);
     let raw = text;
+
     if (!raw?.trim()) throw new Error('Nada para importar. Cole o texto ou um print da vaga e tente de novo.');
     const posts = parseCaptured(raw);
     if (!posts.length) throw new Error('Não encontrei posts no que foi copiado. Use o botão 📌 Capturar vagas.');

@@ -451,6 +451,7 @@ function viewPlatform() {
 
                     <button
                       class="btn ghost"
+                      title="Excluir: vi e não vou aplicar. Ela não volta nas próximas buscas (nem por outra fonte). Dá para restaurar na aba Descartadas."
                       onclick="setStatus('${j.id}', 'descartada')">
                       ✕
                     </button>`}
@@ -521,9 +522,29 @@ async function checkResponsesNow(btn) {
   load();
 }
 
+// Vagas que você excluiu no ✕: a busca não traz de novo. Restaurar = volta para "Para aplicar".
+let excludedQuery = '';
+function viewExcluded() {
+  if (!S.excludedTotal) return '';
+  const q = excludedQuery.trim().toLowerCase();
+  const list = S.excluded.filter((e) => !q || `${e.title} ${e.company ?? ''}`.toLowerCase().includes(q));
+  return `<div class="card"><details ${q ? 'open' : ''}><summary><b>✕ Vagas excluídas (${S.excludedTotal})</b>
+      <span class="muted">— você viu e não aplicou; a busca não traz de novo, nem por outra fonte</span></summary>
+    <input placeholder="Filtrar por vaga ou empresa…" value="${esc(excludedQuery)}" style="margin:10px 0"
+      oninput="excludedQuery = this.value; clearTimeout(window._exq); window._exq = setTimeout(() => { render(); const i = document.querySelector('#view input'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250)">
+    <div class="table-wrap"><table><thead><tr><th>Vaga</th><th>Empresa</th><th>Fonte</th><th>Excluída em</th><th></th></tr></thead><tbody>
+      ${list.map((e) => `<tr><td>${e.url?.startsWith('http') ? `<a href="${esc(e.url)}" target="_blank">${esc(e.title)}</a>` : esc(e.title)}</td>
+        <td>${esc(e.company ?? '—')}</td><td><span class="pill brand">${esc(e.source ?? '')}</span></td><td class="nowrap">${fmt(e.at)}</td>
+        <td><button class="btn ghost" onclick="restoreExcluded('${e.id}')" title="Volta para a lista de vagas para aplicar">Restaurar</button></td></tr>`).join('')}
+    </tbody></table></div>
+    ${S.excludedTotal > S.excluded.length ? `<p class="muted">Mostrando as ${S.excluded.length} mais recentes.</p>` : ''}
+  </details></div>`;
+}
+async function restoreExcluded(id) { await api('/api/excluded/restore', { id }); toast('✔ Vaga restaurada.'); load(); }
+
 function viewDiscarded() {
-  if (!S.discarded.length) return `<div class="card muted">Nenhum post com e-mail ou link foi descartado.</div>`;
-  return `<div class="card muted">Posts com e-mail ou link que o filtro barrou. Discorda? Clique em <b>Incluir mesmo assim</b>.</div>` +
+  if (!S.discarded.length) return viewExcluded() + `<div class="card muted">Nenhum post com e-mail ou link foi descartado.</div>`;
+  return viewExcluded() + `<div class="card muted">Posts com e-mail ou link que o filtro barrou. Discorda? Clique em <b>Incluir mesmo assim</b>.</div>` +
     S.discarded.map((d) => `<div class="card">
       <div class="row"><b>${esc(d.title ?? 'Post sem cargo identificado')}</b>
         <span class="pill warn">${esc(d.reason)}</span>
@@ -757,6 +778,7 @@ function showImport(r) {
   tab = r.email ? 'queue' : r.plataforma ? 'platform' : r.descartadasComContato ? 'discarded' : tab;
   load();
 }
+
 async function importText(text = $('#pasteArea').value) {
   if (!text.trim()) return toast('Cole um print ou o texto da vaga primeiro.');
   try {
@@ -1040,6 +1062,7 @@ async function pollProgress() {
 }
 pollProgress();
 
+
 function autoImport() {
   // A notificação de "várias respostas" abre o painel direto na aba Respostas.
   if (location.hash === '#respostas') {
@@ -1047,6 +1070,7 @@ function autoImport() {
     tab = 'responses';
     return render();
   }
+
 }
 window.addEventListener('hashchange', autoImport);
 load().then(autoImport);
